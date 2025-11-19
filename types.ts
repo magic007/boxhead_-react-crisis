@@ -10,7 +10,8 @@ export enum EntityType {
   ZOMBIE,
   DEVIL,
   BOX,
-  OBSTACLE // 新增：障碍物类型
+  OBSTACLE, // 新增：障碍物类型
+  ITEM_HEALTH // 新增：血包
 }
 
 export enum WeaponType {
@@ -47,7 +48,10 @@ export interface Entity {
   maxHp: number;
   color: string;
   isDead: boolean;
-  lastAttackTime?: number;
+  dying?: boolean; // For death animation (physics slide)
+  dyingTimer?: number;
+  lastAttackTime?: number; // For entity's own attack cooldown (player firing / enemy attacking obstacles)
+  lastDamageTime?: number; // For tracking incoming damage cooldown (player getting hit)
   lastHitTime?: number; // Tracks when the entity was last hit for knockback stun
   // For obstacles
   isExplosive?: boolean; // 是否易爆（油桶）

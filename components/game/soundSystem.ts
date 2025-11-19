@@ -101,6 +101,26 @@ export class SoundSystem {
     this.playNoise(0.05, 0.2);
   }
 
+  playPickup() {
+    if (this.ctx.state === 'suspended') return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    
+    // High pitched double beep
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1200, t);
+    osc.frequency.setValueAtTime(1600, t + 0.1);
+    
+    gain.gain.setValueAtTime(0.1, t);
+    gain.gain.linearRampToValueAtTime(0, t + 0.2);
+    
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start();
+    osc.stop(t + 0.2);
+  }
+
   playVirusShoot() {
      if (this.ctx.state === 'suspended') return;
      const t = this.ctx.currentTime;

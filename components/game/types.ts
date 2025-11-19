@@ -9,6 +9,7 @@ export interface GameRefs {
   player: React.MutableRefObject<Entity>;
   enemies: React.MutableRefObject<Entity[]>;
   obstacles: React.MutableRefObject<Entity[]>;
+  items: React.MutableRefObject<Entity[]>;
   bullets: React.MutableRefObject<Bullet[]>;
   particles: React.MutableRefObject<Particle[]>;
   bloodDecals: React.MutableRefObject<Particle[]>;
@@ -21,10 +22,13 @@ export interface GameRefs {
   lastKillTime: React.MutableRefObject<number>;
   wave: React.MutableRefObject<number>;
   frame: React.MutableRefObject<number>;
+  difficultyLevel: React.MutableRefObject<number>; 
+  gameMessage: React.MutableRefObject<string | null>; 
+  gameMessageTimer: React.MutableRefObject<number>; 
   currentWeapon: React.MutableRefObject<WeaponType>;
   ammo: React.MutableRefObject<Record<WeaponType, number>>;
   mapWalls: React.MutableRefObject<Wall[]>;
-  soundSystem: React.MutableRefObject<SoundSystem>; // 新增音效系统
+  soundSystem: React.MutableRefObject<SoundSystem>;
   callbacks: React.MutableRefObject<{
     onScoreUpdate: (score: number, multiplier: number) => void;
     onHealthUpdate: (hp: number) => void;

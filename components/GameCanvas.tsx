@@ -44,6 +44,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     player: useRef<Entity>({} as Entity),
     enemies: useRef<Entity[]>([]),
     obstacles: useRef<Entity[]>([]),
+    items: useRef<Entity[]>([]),
     bullets: useRef<Bullet[]>([]),
     particles: useRef<Particle[]>([]),
     bloodDecals: useRef<Particle[]>([]),
@@ -56,6 +57,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     lastKillTime: useRef(0),
     wave: useRef(1),
     frame: useRef(0),
+    difficultyLevel: useRef(0),
+    gameMessage: useRef<string | null>(null),
+    gameMessageTimer: useRef(0),
     currentWeapon: useRef<WeaponType>(WeaponType.PISTOL),
     ammo: useRef<Record<WeaponType, number>>({
       [WeaponType.PISTOL]: 10000,
@@ -98,9 +102,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     gameRefs.particles.current = [];
     gameRefs.bloodDecals.current = [];
     gameRefs.obstacles.current = [];
+    gameRefs.items.current = [];
     gameRefs.score.current = 0;
     gameRefs.multiplier.current = 1;
     gameRefs.wave.current = 1;
+    gameRefs.difficultyLevel.current = 0;
+    gameRefs.gameMessage.current = null;
     gameRefs.ammo.current = {
       [WeaponType.PISTOL]: 10000,
       [WeaponType.UZI]: 10000,
@@ -118,6 +125,44 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     gameRefs.soundSystem.current?.resume();
   }, []);
 
+  // Force reset when entering PLAYING state
+  useEffect(() => {
+    if (gameState === GameState.PLAYING) {
+        resetGame();
+    }
+  }, [gameState, resetGame]);
+
+
+  useEffect(() => {
+    if (gameState !== GameState.PLAYING) {
+      return;
+    }
+    
+    let animationFrameId: number;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    const engine = engineRef.current;
+    let lastTime = 0;
+
+    if (!canvas || !ctx || !engine) return;
+
+    const loop = (time: number) => {
+      if (lastTime === 0) lastTime = time;
+      const delta = time - lastTime;
+      lastTime = time;
+      
+      // Cap delta to prevent huge jumps if tab receives focus after a while
+      const safeDelta = Math.min(delta, 100);
+
+      Matter.Engine.update(engine, safeDelta);
+      updateGame(gameRefs, time); // Physics is handled by engine, updateGame handles logic
+      renderGame(ctx, gameRefs);
+      animationFrameId = requestAnimationFrame(loop);
+    };
+
+    animationFrameId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [gameState, resetGame]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -158,33 +203,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
-
-
-  useEffect(() => {
-    if (gameState !== GameState.PLAYING) {
-      if (gameState === GameState.MENU && engineRef.current) resetGame();
-      return;
-    }
-    
-    if (gameRefs.player.current.hp === undefined) resetGame();
-
-    let animationFrameId: number;
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    const engine = engineRef.current;
-
-    if (!canvas || !ctx || !engine) return;
-
-    const loop = (time: number) => {
-      Matter.Engine.update(engine, 1000 / 60);
-      updateGame(gameRefs, time);
-      renderGame(ctx, gameRefs);
-      animationFrameId = requestAnimationFrame(loop);
-    };
-
-    animationFrameId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [gameState, resetGame]);
 
   return (
     <canvas 

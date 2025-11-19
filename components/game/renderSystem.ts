@@ -1,6 +1,6 @@
 
 import { GameRefs } from './types';
-import { WORLD_WIDTH, WORLD_HEIGHT, COLORS, WEAPONS } from '../../constants';
+import { WORLD_WIDTH, WORLD_HEIGHT, COLORS, WEAPONS, CANVAS_WIDTH } from '../../constants';
 import { Entity, EntityType, WeaponType } from '../../types';
 
 export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
@@ -110,6 +110,30 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
        ctx.restore();
     });
     
+    // Items (Health Packs)
+    refs.items.current.forEach(item => {
+        if (item.type === EntityType.ITEM_HEALTH) {
+            ctx.save();
+            ctx.translate(item.pos.x, item.pos.y);
+            ctx.shadowColor = '#ffffff';
+            ctx.shadowBlur = 5;
+            
+            // White Box
+            ctx.fillStyle = '#ffffff';
+            const s = 16;
+            ctx.fillRect(-s/2, -s/2, s, s);
+            
+            // Red Cross
+            ctx.fillStyle = '#ff0000';
+            const cs = 10;
+            const cw = 4;
+            ctx.fillRect(-cw/2, -cs/2, cw, cs);
+            ctx.fillRect(-cs/2, -cw/2, cs, cw);
+            
+            ctx.restore();
+        }
+    });
+
     // Entities
     refs.enemies.current.forEach(e => drawEntity(ctx, e, refs));
     if (!refs.player.current.isDead) drawEntity(ctx, refs.player.current, refs);
@@ -181,6 +205,18 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
     }
 
     ctx.restore();
+
+    // Render Game Message (Screen Space, not World Space)
+    if (refs.gameMessage.current) {
+        ctx.save();
+        ctx.font = 'bold 30px Courier New';
+        ctx.textAlign = 'center';
+        // Flash effect
+        ctx.fillStyle = Math.floor(Date.now() / 200) % 2 === 0 ? '#ff0000' : '#ffff00';
+        ctx.fillText(refs.gameMessage.current, CANVAS_WIDTH / 2, 100);
+        ctx.strokeText(refs.gameMessage.current, CANVAS_WIDTH / 2, 100);
+        ctx.restore();
+    }
 };
 
 const drawEntity = (ctx: CanvasRenderingContext2D, e: Entity, refs: GameRefs) => {

@@ -2,20 +2,13 @@
 // @ts-ignore
 import Matter from 'matter-js';
 import { GameRefs } from './types';
-import { Bullet, Entity, EntityType, WeaponType } from '../../types';
-import { COLORS, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_HP } from '../../constants';
+import { Bullet, Entity, EntityType, WeaponType, Vector2 } from '../../types';
+import { COLORS, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_HP, HEALTH_PACK_VAL, CAT_DEFAULT, CAT_PLAYER, CAT_ENEMY, CAT_BULLET, CAT_WALL, CAT_OBSTACLE, CAT_ENEMY_BULLET, CAT_ITEM } from '../../constants';
 import { dist, spawnParticles } from './utils';
 
-// Collision Categories
-export const CAT_DEFAULT = 0x0001;
-export const CAT_PLAYER = 0x0002;
-export const CAT_ENEMY = 0x0004;
-export const CAT_BULLET = 0x0008;
-export const CAT_WALL = 0x0010;
-export const CAT_OBSTACLE = 0x0020;
-export const CAT_ENEMY_BULLET = 0x0040;
+export { createExplosion, initPhysics, resetGamePhysics };
 
-export const initPhysics = (refs: GameRefs) => {
+const initPhysics = (refs: GameRefs) => {
   const Engine = Matter.Engine;
   const World = Matter.World;
   const Bodies = Matter.Bodies;
@@ -42,6 +35,23 @@ export const initPhysics = (refs: GameRefs) => {
           const bodyA = pair.bodyA;
           const bodyB = pair.bodyB;
           
+          // Item Pickup (Player vs Item)
+          if ((bodyA.label === 'PLAYER' && bodyB.label === 'ITEM') || (bodyB.label === 'PLAYER' && bodyA.label === 'ITEM')) {
+              const itemBody = bodyA.label === 'ITEM' ? bodyA : bodyB;
+              const item = itemBody.plugin.entity as Entity;
+              
+              if (item && !item.isDead) {
+                  item.isDead = true;
+                  refs.soundSystem.current?.playPickup();
+                  
+                  if (item.type === EntityType.ITEM_HEALTH) {
+                      refs.player.current.hp = Math.min(100, refs.player.current.hp + HEALTH_PACK_VAL);
+                      spawnParticles(refs, refs.player.current.pos, 10, '#00FF00', 2, false);
+                  }
+              }
+              return;
+          }
+
           const isBulletA = bodyA.label === 'BULLET';
           const isBulletB = bodyB.label === 'BULLET';
           
@@ -73,8 +83,11 @@ export const initPhysics = (refs: GameRefs) => {
 
               // 1b. Player Bullet hits Enemy
               if (otherBody.label === 'ENEMY') {
-                  bullet.active = false;
                   const enemy = otherBody.plugin.entity as Entity;
+                  // Ignore dying enemies for bullet collisions
+                  if (enemy.dying) return;
+
+                  bullet.active = false;
                   if (bullet.isGrenade) {
                       createExplosion(refs, bullet.pos, bullet.damage, 250);
                   } else {
@@ -82,38 +95,59 @@ export const initPhysics = (refs: GameRefs) => {
                       enemy.lastHitTime = Date.now(); // Stun logic
                       
                       refs.soundSystem.current?.playHit(); // Safe Sound
-
                       spawnParticles(refs, enemy.pos, 3, COLORS.BLOOD, 2, true);
                       
-                      // Knockback Force
-                      const forceMag = 0.96 * (bullet.damage / 10); 
+                      // --- Knockback Logic (Velocity Override) ---
+                      const knockbackSpeed = bullet.damage * 0.6; // Increased knockback scaling
                       const knockbackDir = { x: bullet.velocity.x, y: bullet.velocity.y };
+                      
+                      // Normalize
                       const len = Math.sqrt(knockbackDir.x * knockbackDir.x + knockbackDir.y * knockbackDir.y);
                       if (len > 0) {
                          knockbackDir.x /= len;
                          knockbackDir.y /= len;
                       }
-                      Matter.Body.applyForce(otherBody, otherBody.position, {
-                           x: knockbackDir.x * forceMag,
-                           y: knockbackDir.y * forceMag
+
+                      // Apply velocity
+                      Matter.Body.setVelocity(otherBody, {
+                           x: knockbackDir.x * knockbackSpeed,
+                           y: knockbackDir.y * knockbackSpeed
                       });
 
-                      if (enemy.hp <= 0) {
-                          enemy.isDead = true;
-                          handleEnemyDeath(refs, enemy);
+                      if (enemy.hp <= 0 && !enemy.dying) {
+                          // Enter Dying State (Physics Slide)
+                          triggerEnemyDeath(refs, enemy);
+                          // Re-apply huge velocity for death fling
+                          Matter.Body.setVelocity(otherBody, {
+                              x: knockbackDir.x * knockbackSpeed * 1.5,
+                              y: knockbackDir.y * knockbackSpeed * 1.5
+                          });
                       }
                   }
               }
               // Hit Obstacle
               else if (otherBody.label === 'OBSTACLE') {
-                   bullet.active = false;
                    const obs = otherBody.plugin.entity as Entity;
                    if (bullet.isGrenade) {
                        createExplosion(refs, bullet.pos, bullet.damage, 250);
+                       bullet.active = false;
                    } else if (obs.isExplosive) {
-                       obs.hp -= bullet.damage;
+                       // Instant detonation for Barrels
+                       obs.hp = 0;
+                       bullet.active = false;
+                       refs.soundSystem.current?.playHit();
+                   } else {
+                       // Hit Fake Wall
+                       if (!bullet.isVirus) {
+                           // Do nothing (Pass through)
+                           return; 
+                       } else {
+                           // Virus hits wall
+                           bullet.active = false;
+                           obs.hp -= bullet.damage;
+                           refs.soundSystem.current?.playHit();
+                       }
                    }
-                   refs.soundSystem.current?.playHit(); // Safe Sound
               }
               // Hit Wall
               else if (otherBody.label === 'WALL') {
@@ -121,14 +155,28 @@ export const initPhysics = (refs: GameRefs) => {
                   if (bullet.isGrenade) createExplosion(refs, bullet.pos, bullet.damage, 250);
               }
           }
-
-          // 2. Zombie Attacks Player
-          if ((bodyA.label === 'PLAYER' && bodyB.label === 'ENEMY') || (bodyB.label === 'PLAYER' && bodyA.label === 'ENEMY')) {
-               refs.player.current.hp -= 0.5;
-               if (refs.player.current.hp <= 0) {
-                   refs.soundSystem.current?.playGameOver(); // Safe Sound
-                   refs.callbacks.current.onGameOver(refs.score.current);
-               }
+          
+          // Zombie vs Zombie (Knockback Propagation)
+          // Detect collisions between enemies to propagate momentum
+          if (bodyA.label === 'ENEMY' && bodyB.label === 'ENEMY') {
+              const vA = bodyA.velocity;
+              const vB = bodyB.velocity;
+              const speedA = Math.sqrt(vA.x * vA.x + vA.y * vA.y);
+              const speedB = Math.sqrt(vB.x * vB.x + vB.y * vB.y);
+              
+              const transferThreshold = 1.0; // Minimum speed to cause a chain push
+              
+              if (speedA > transferThreshold && speedB < speedA * 0.8) {
+                  // A pushes B
+                  Matter.Body.setVelocity(bodyB, { x: vA.x * 0.9, y: vA.y * 0.9 });
+                  // Stun B
+                  if (bodyB.plugin.entity) bodyB.plugin.entity.lastHitTime = Date.now();
+                  
+              } else if (speedB > transferThreshold && speedA < speedB * 0.8) {
+                  // B pushes A
+                  Matter.Body.setVelocity(bodyA, { x: vB.x * 0.9, y: vB.y * 0.9 });
+                  if (bodyA.plugin.entity) bodyA.plugin.entity.lastHitTime = Date.now();
+              }
           }
       });
   });
@@ -146,13 +194,36 @@ export const initPhysics = (refs: GameRefs) => {
                const enemy = enemyBody.plugin.entity;
                const obs = obsBody.plugin.entity;
                
+               // Dying enemies don't attack
+               if (enemy && enemy.dying) return;
+
                const now = Date.now();
-               if (enemy && obs && !obs.isExplosive && now - (enemy.lastAttackTime || 0) > 1000) {
+               if (enemy && obs && now - (enemy.lastAttackTime || 0) > 1000) {
                    enemy.lastAttackTime = now;
                    obs.hp -= 20;
                    refs.soundSystem.current?.playHit(); // Safe Sound
                    spawnParticles(refs, obsBody.position, 3, '#cccccc', 2);
                }
+          }
+
+          // Zombie attacks Player (Continuous Damage)
+          if ((bodyA.label === 'PLAYER' && bodyB.label === 'ENEMY') || (bodyB.label === 'PLAYER' && bodyA.label === 'ENEMY')) {
+              const enemyBody = bodyA.label === 'ENEMY' ? bodyA : bodyB;
+              const enemy = enemyBody.plugin.entity;
+              
+              // Dying enemies don't attack
+              if (enemy && enemy.dying) return;
+
+              const now = Date.now();
+              if (now - (refs.player.current.lastDamageTime || 0) > 500) {
+                   refs.player.current.lastDamageTime = now;
+                   refs.player.current.hp -= 5;
+                   refs.soundSystem.current?.playHit();
+                   if (refs.player.current.hp <= 0) {
+                       refs.soundSystem.current?.playGameOver(); // Safe Sound
+                       refs.callbacks.current.onGameOver(refs.score.current);
+                   }
+              }
           }
       });
   });
@@ -160,7 +231,7 @@ export const initPhysics = (refs: GameRefs) => {
   return engine;
 };
 
-export const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, damage: number, range: number = 180) => {
+const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, damage: number, range: number = 180) => {
     refs.soundSystem.current?.playExplosion(); // Safe Sound
     spawnParticles(refs, pos, 40, '#FF4500', 10, false);
     spawnParticles(refs, pos, 20, '#555555', 8, false);
@@ -176,9 +247,10 @@ export const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, dam
             const angle = Math.atan2(body.position.y - pos.y, body.position.x - pos.x);
             
             if (!body.isStatic) {
-                Matter.Body.applyForce(body, body.position, {
-                    x: Math.cos(angle) * forceMagnitude * (body.label === 'OBSTACLE' ? 5 : 1), 
-                    y: Math.sin(angle) * forceMagnitude * (body.label === 'OBSTACLE' ? 5 : 1)
+                const blastSpeed = 15 * (1 - d/range);
+                Matter.Body.setVelocity(body, {
+                    x: Math.cos(angle) * blastSpeed,
+                    y: Math.sin(angle) * blastSpeed
                 });
             }
 
@@ -187,9 +259,13 @@ export const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, dam
                 const e = body.plugin.entity;
                 if(e) {
                     e.hp -= damage;
-                    if (e.hp <= 0 && !e.isDead) {
-                        e.isDead = true;
-                        handleEnemyDeath(refs, e);
+                    if (e.hp <= 0 && !e.dying) {
+                        triggerEnemyDeath(refs, e);
+                        // Blast corpse away
+                         Matter.Body.setVelocity(body, {
+                            x: Math.cos(angle) * 20,
+                            y: Math.sin(angle) * 20
+                        });
                     }
                 }
             } else if (body.label === 'PLAYER') {
@@ -206,11 +282,51 @@ export const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, dam
     });
 };
 
-const handleEnemyDeath = (refs: GameRefs, enemy: Entity) => {
+const spawnItem = (refs: GameRefs, pos: Vector2, type: EntityType) => {
+    const body = Matter.Bodies.rectangle(pos.x, pos.y, 16, 16, {
+        isStatic: true,
+        isSensor: true, 
+        label: 'ITEM',
+        collisionFilter: { category: CAT_ITEM, mask: CAT_PLAYER } 
+    });
+    
+    Matter.World.add(refs.engine.world, body);
+    
+    const item: Entity = {
+        id: Math.random(),
+        type: type,
+        pos: { ...pos },
+        velocity: { x: 0, y: 0 },
+        rotation: 0,
+        radius: 8,
+        hp: 1,
+        maxHp: 1,
+        color: '#fff',
+        isDead: false,
+        body: body
+    };
+    body.plugin.entity = item;
+    refs.items.current.push(item);
+};
+
+const triggerEnemyDeath = (refs: GameRefs, enemy: Entity) => {
+    enemy.dying = true;
+    enemy.dyingTimer = 15; // Physics slide frames
+    enemy.color = '#444444'; // Darken to show death
+    
+    // Change collision filter to avoid blocking bullets
+    if (enemy.body) {
+        enemy.body.collisionFilter = { category: CAT_DEFAULT, mask: CAT_WALL | CAT_OBSTACLE };
+    }
+
     refs.soundSystem.current?.playDeath(); // Safe Sound
-    if (enemy.body) Matter.World.remove(refs.engine.world, enemy.body);
     spawnParticles(refs, enemy.pos, 15, enemy.type === EntityType.DEVIL ? COLORS.DEVIL_SKIN : COLORS.ZOMBIE_BLOOD, 4, true);
                 
+    // Drop Health Pack for Devil
+    if (enemy.type === EntityType.DEVIL) {
+        spawnItem(refs, enemy.pos, EntityType.ITEM_HEALTH);
+    }
+
     const now = Date.now();
     if (now - refs.lastKillTime.current < 1500) {
         refs.multiplier.current = Math.min(99, refs.multiplier.current + 1);
@@ -224,14 +340,14 @@ const handleEnemyDeath = (refs: GameRefs, enemy: Entity) => {
 
     if (refs.score.current > refs.wave.current * 5000) refs.wave.current++;
     
-    // Loot Drops
+    // Loot Drops (Ammo)
     if (Math.random() < 0.1) refs.ammo.current[WeaponType.UZI] += 50;
     if (Math.random() < 0.05) refs.ammo.current[WeaponType.SHOTGUN] += 10;
     if (Math.random() < 0.05) refs.ammo.current[WeaponType.FAKE_WALL] += 5;
     if (Math.random() < 0.05) refs.ammo.current[WeaponType.BARREL] += 5;
 };
 
-export const resetGamePhysics = (refs: GameRefs) => {
+const resetGamePhysics = (refs: GameRefs) => {
     const World = Matter.World;
     const engine = refs.engine;
     if (!engine) return;
@@ -247,8 +363,9 @@ export const resetGamePhysics = (refs: GameRefs) => {
     const playerBody = Matter.Bodies.circle(startPos.x, startPos.y, playerRadius, {
         label: 'PLAYER',
         friction: 0,
-        frictionAir: 0,
+        frictionAir: 0.1, // Slightly higher air friction to stop fast
         restitution: 0,
+        density: 100, // Very high density to make player heavy/immovable by zombies
         inertia: Infinity,
         collisionFilter: { category: CAT_PLAYER }
     });
@@ -267,6 +384,7 @@ export const resetGamePhysics = (refs: GameRefs) => {
       color: COLORS.PLAYER_SKIN,
       isDead: false,
       lastAttackTime: 0,
+      lastDamageTime: 0,
       body: playerBody
     };
     playerBody.plugin.entity = refs.player.current;

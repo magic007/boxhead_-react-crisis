@@ -2,16 +2,32 @@
 // @ts-ignore
 import Matter from 'matter-js';
 import { GameRefs } from './types';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_SPEED, ZOMBIE_SPEED, DEVIL_SPEED, WEAPONS, ZOMBIE_HP, DEVIL_HP, COLORS, DEVIL_FIRE_RATE, VIRUS_SPEED, VIRUS_DAMAGE } from '../../constants';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_SPEED, ZOMBIE_SPEED, DEVIL_SPEED, WEAPONS, ZOMBIE_HP, DEVIL_HP, COLORS, DEVIL_FIRE_RATE, VIRUS_SPEED, VIRUS_DAMAGE, BARREL_EXPLOSION_RANGE, CAT_BULLET, CAT_PLAYER, CAT_ENEMY, CAT_OBSTACLE, CAT_ENEMY_BULLET, CAT_WALL, CAT_ITEM } from '../../constants';
 import { WeaponType, EntityType, Entity, Bullet } from '../../types';
 import { dist, spawnParticles } from './utils';
-import { createExplosion, CAT_BULLET, CAT_PLAYER, CAT_ENEMY, CAT_OBSTACLE, CAT_ENEMY_BULLET, CAT_WALL } from './physicsSystem';
+import { createExplosion } from './physicsSystem';
 
 export const updateGame = (refs: GameRefs, time: number) => {
     const player = refs.player.current;
     const pBody = player.body;
     
     if (!pBody) return;
+
+    // --- Difficulty Scaling ---
+    const calculatedDifficulty = Math.floor(refs.score.current / 10000);
+    if (calculatedDifficulty > refs.difficultyLevel.current) {
+        refs.difficultyLevel.current = calculatedDifficulty;
+        refs.gameMessage.current = `WARNING: ENEMY SURGE! (LEVEL ${calculatedDifficulty})`;
+        refs.gameMessageTimer.current = 180; 
+        refs.soundSystem.current?.playPickup(); 
+    }
+
+    if (refs.gameMessageTimer.current > 0) {
+        refs.gameMessageTimer.current--;
+        if (refs.gameMessageTimer.current <= 0) {
+            refs.gameMessage.current = null;
+        }
+    }
 
     const worldMouseX = refs.mouse.current.x + refs.camera.current.x;
     const worldMouseY = refs.mouse.current.y + refs.camera.current.y;
@@ -33,7 +49,6 @@ export const updateGame = (refs: GameRefs, time: number) => {
       Matter.Body.setVelocity(pBody, { x: 0, y: 0 });
     }
 
-    // Sync Render Position
     player.pos.x = pBody.position.x;
     player.pos.y = pBody.position.y;
 
@@ -46,6 +61,7 @@ export const updateGame = (refs: GameRefs, time: number) => {
       const AUTO_AIM_RANGE = 600;
 
       refs.enemies.current.forEach(e => {
+          if (e.dying) return; // Don't aim at dead bodies
           const d = dist(player.pos, e.pos);
           if (d < minDst) {
               minDst = d;
@@ -86,17 +102,32 @@ export const updateGame = (refs: GameRefs, time: number) => {
     }
 
     // 5. Enemy Spawning
-    if (refs.enemies.current.length < 8 + refs.wave.current * 2) {
-      if (Math.random() < 0.02) {
+    const difficulty = refs.difficultyLevel.current;
+    const maxEnemies = 40 + (refs.wave.current * 5) + (difficulty * 4);
+    const spawnRate = 0.08 * Math.pow(1.1, difficulty); 
+
+    if (refs.enemies.current.length < maxEnemies) {
+      if (Math.random() < spawnRate) {
         spawnEnemy(refs, player);
       }
     }
 
-    // 6. Enemy AI
+    // 6. Enemy AI & State
     refs.enemies.current.forEach(enemy => {
       if(!enemy.body) return;
       enemy.pos.x = enemy.body.position.x;
       enemy.pos.y = enemy.body.position.y;
+
+      // Handle Dying Animation
+      if (enemy.dying) {
+          enemy.dyingTimer = (enemy.dyingTimer || 0) - 1;
+          if (enemy.dyingTimer <= 0) {
+              enemy.isDead = true;
+              Matter.World.remove(refs.engine.world, enemy.body);
+              enemy.body = undefined;
+          }
+          return; // Skip AI
+      }
 
       const dToPlayer = dist(enemy.pos, player.pos);
       const angle = Math.atan2(player.pos.y - enemy.pos.y, player.pos.x - enemy.pos.x);
@@ -111,7 +142,7 @@ export const updateGame = (refs: GameRefs, time: number) => {
       }
 
       // Stun Check
-      const isStunned = Date.now() - (enemy.lastHitTime || 0) < 200;
+      const isStunned = Date.now() - (enemy.lastHitTime || 0) < 300;
       if (!isStunned) {
            const speed = enemy.type === EntityType.DEVIL ? DEVIL_SPEED : ZOMBIE_SPEED;
            Matter.Body.setVelocity(enemy.body, {
@@ -124,6 +155,7 @@ export const updateGame = (refs: GameRefs, time: number) => {
     // 7. Cleanup & Sync
     updateBullets(refs);
     updateObstacles(refs);
+    updateItems(refs); 
     refs.enemies.current = refs.enemies.current.filter(e => !e.isDead);
     updateParticles(refs);
     
@@ -139,7 +171,6 @@ export const updateGame = (refs: GameRefs, time: number) => {
 // --- Helpers for Update ---
 
 const handlePlacement = (refs: GameRefs, weapon: any) => {
-    // Grid Snapping Logic: 16px (Wall Diameter)
     const gridSize = 16; 
     const rawX = refs.player.current.pos.x;
     const rawY = refs.player.current.pos.y;
@@ -152,7 +183,7 @@ const handlePlacement = (refs: GameRefs, weapon: any) => {
     const isStacked = bodies.some((b: any) => b.label === 'OBSTACLE' || b.label === 'WALL');
 
     if (!isStacked) {
-        refs.soundSystem.current?.playBuild(); // Safe Sound
+        refs.soundSystem.current?.playBuild(); 
 
         if (weapon.ammo !== -1) refs.ammo.current[weapon.type] = Math.max(0, refs.ammo.current[weapon.type] - 1);
         
@@ -201,17 +232,17 @@ const handlePlacement = (refs: GameRefs, weapon: any) => {
 };
 
 const handleShooting = (refs: GameRefs, weapon: any, player: Entity) => {
-    refs.soundSystem.current?.playShoot(weapon.type); // Safe Sound
+    refs.soundSystem.current?.playShoot(weapon.type); 
     if (weapon.ammo !== -1) refs.ammo.current[weapon.type] = Math.max(0, refs.ammo.current[weapon.type] - 1);
     
     for (let i = 0; i < weapon.count; i++) {
       const spread = (Math.random() - 0.5) * weapon.spread;
       const angle = player.rotation + spread;
       
-      const bBody = Matter.Bodies.circle(player.pos.x + Math.cos(angle)*20, player.pos.y + Math.sin(angle)*20, 3, {
+      const bBody = Matter.Bodies.circle(player.pos.x + Math.cos(angle)*25, player.pos.y + Math.sin(angle)*25, 3, {
           label: 'BULLET',
           frictionAir: 0,
-          isSensor: false,
+          isSensor: true, 
           density: 0.001,
           collisionFilter: { category: CAT_BULLET, mask: 0xFFFFFFFF ^ CAT_PLAYER } 
       });
@@ -236,7 +267,7 @@ const handleShooting = (refs: GameRefs, weapon: any, player: Entity) => {
 };
 
 const spawnVirus = (refs: GameRefs, devil: Entity, target: Entity) => {
-    refs.soundSystem.current?.playVirusShoot(); // Safe Sound
+    refs.soundSystem.current?.playVirusShoot(); 
     const angle = Math.atan2(target.pos.y - devil.pos.y, target.pos.x - devil.pos.x);
     const bBody = Matter.Bodies.circle(devil.pos.x + Math.cos(angle)*15, devil.pos.y + Math.sin(angle)*15, 6, {
         label: 'BULLET',
@@ -269,7 +300,11 @@ const spawnVirus = (refs: GameRefs, devil: Entity, target: Entity) => {
 };
 
 const spawnEnemy = (refs: GameRefs, player: Entity) => {
-    const isDevil = Math.random() < Math.min(0.05 * refs.wave.current, 0.3);
+    const baseChance = 0.1;
+    const waveChance = refs.wave.current * 0.05;
+    const devilChance = Math.min(0.4, baseChance + waveChance);
+    
+    const isDevil = Math.random() < devilChance;
     const spawnAngle = Math.random() * Math.PI * 2;
     const spawnDist = 800;
     let spawnX = player.pos.x + Math.cos(spawnAngle) * spawnDist;
@@ -280,7 +315,8 @@ const spawnEnemy = (refs: GameRefs, player: Entity) => {
     const radius = 9;
     const body = Matter.Bodies.circle(spawnX, spawnY, radius, {
         label: 'ENEMY',
-        frictionAir: 0.05,
+        // Low friction to allow knockback sliding
+        frictionAir: 0.02,
         inertia: Infinity,
         collisionFilter: { category: CAT_ENEMY }
     });
@@ -332,7 +368,7 @@ const updateObstacles = (refs: GameRefs) => {
             obs.isDead = true;
             if (obs.body) Matter.World.remove(refs.engine.world, obs.body);
             if (obs.isExplosive) {
-                createExplosion(refs, obs.pos, 800); 
+                createExplosion(refs, obs.pos, 800, BARREL_EXPLOSION_RANGE); 
             } else {
                 spawnParticles(refs, obs.pos, 10, '#888888', 3, false); 
             }
@@ -341,7 +377,21 @@ const updateObstacles = (refs: GameRefs) => {
     refs.obstacles.current = refs.obstacles.current.filter(o => !o.isDead);
 };
 
+const updateItems = (refs: GameRefs) => {
+    refs.items.current.forEach(item => {
+        if (item.isDead && item.body) {
+            Matter.World.remove(refs.engine.world, item.body);
+        }
+    });
+    refs.items.current = refs.items.current.filter(item => !item.isDead);
+};
+
 const updateParticles = (refs: GameRefs) => {
+    // Limit particles for performance
+    if (refs.particles.current.length > 200) {
+        refs.particles.current.splice(0, refs.particles.current.length - 200);
+    }
+
     refs.particles.current.forEach(p => {
       p.pos.x += p.velocity.x;
       p.pos.y += p.velocity.y;
@@ -349,7 +399,7 @@ const updateParticles = (refs: GameRefs) => {
       p.velocity.y *= 0.9;
       p.life -= p.decay;
       
-      if (p.life <= 0 && p.isBlood && refs.bloodDecals.current.length < 1000) {
+      if (p.life <= 0 && p.isBlood && refs.bloodDecals.current.length < 500) {
         refs.bloodDecals.current.push({ ...p, life: 1, velocity: { x: 0, y: 0 } });
       }
     });
