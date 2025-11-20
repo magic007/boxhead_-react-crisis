@@ -352,11 +352,14 @@ const triggerEnemyDeath = (refs: GameRefs, enemy: Entity) => {
 
     if (refs.score.current > refs.wave.current * 5000) refs.wave.current++;
     
-    // Loot Drops (Ammo)
-    if (Math.random() < 0.1) refs.ammo.current[WeaponType.UZI] += 50;
-    if (Math.random() < 0.05) refs.ammo.current[WeaponType.SHOTGUN] += 10;
-    if (Math.random() < 0.05) refs.ammo.current[WeaponType.FAKE_WALL] += 5;
-    if (Math.random() < 0.05) refs.ammo.current[WeaponType.BARREL] += 5;
+    // Loot Drops (Ammo) - Give to ALL players
+    const activePlayers = refs.players.current.filter(p => !p.isDead);
+    activePlayers.forEach(p => {
+        if (Math.random() < 0.1) p.ammo[WeaponType.UZI] += 50;
+        if (Math.random() < 0.05) p.ammo[WeaponType.SHOTGUN] += 10;
+        if (Math.random() < 0.05) p.ammo[WeaponType.FAKE_WALL] += 5;
+        if (Math.random() < 0.05) p.ammo[WeaponType.BARREL] += 5;
+    });
 };
 
 const resetGamePhysics = (refs: GameRefs, playerCount: number = 1) => {

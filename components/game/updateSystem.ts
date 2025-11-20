@@ -3,17 +3,21 @@
 import Matter from 'matter-js';
 import { GameRefs } from './types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_SPEED, ZOMBIE_SPEED, DEVIL_SPEED, WEAPONS, ZOMBIE_HP, DEVIL_HP, COLORS, DEVIL_FIRE_RATE, VIRUS_SPEED, VIRUS_DAMAGE, BARREL_EXPLOSION_RANGE, CAT_BULLET, CAT_PLAYER, CAT_ENEMY, CAT_OBSTACLE, CAT_ENEMY_BULLET, CAT_WALL, CAT_ITEM } from '../../constants';
-import { WeaponType, EntityType, Entity, Bullet } from '../../types';
+import { WeaponType, EntityType, Entity, Bullet, PlayerEntity } from '../../types';
 import { dist, spawnParticles } from './utils';
 import { createExplosion } from './physicsSystem';
 import { Action } from './inputConfig';
 
 export const updateGame = (refs: GameRefs, time: number) => {
-    const player = refs.player.current;
-    const pBody = player.body;
+    const players = refs.players.current;
+    const activePlayers = players.filter(p => !p.isDead);
     
-    if (!pBody) return;
-
+    if (players.length > 0 && activePlayers.length === 0) {
+        // All players dead
+        refs.callbacks.current.onGameOver(refs.score.current);
+        return;
+    }
+    
     // --- Difficulty Scaling ---
     const calculatedDifficulty = Math.floor(refs.score.current / 10000);
     if (calculatedDifficulty > refs.difficultyLevel.current) {
@@ -32,85 +36,138 @@ export const updateGame = (refs: GameRefs, time: number) => {
 
     const worldMouseX = refs.mouse.current.x + refs.camera.current.x;
     const worldMouseY = refs.mouse.current.y + refs.camera.current.y;
-    const map = refs.keyMap.current;
     
-    // 1. Player Movement
-    let moveX = 0;
-    let moveY = 0;
-    if (refs.keys.current.has(map[Action.MOVE_UP])) moveY -= 1;
-    if (refs.keys.current.has(map[Action.MOVE_DOWN])) moveY += 1;
-    if (refs.keys.current.has(map[Action.MOVE_LEFT])) moveX -= 1;
-    if (refs.keys.current.has(map[Action.MOVE_RIGHT])) moveX += 1;
+    // Update each player
+    players.forEach(player => {
+        if (player.isDead) return;
+        
+        const pBody = player.body;
+        const map = refs.keyMaps.current[player.playerId]; // Use playerId as key
+        if (!map) return;
+        
+        // 0. Weapon Switching
+        if (refs.keys.current.has(map[Action.WEAPON_PISTOL])) player.currentWeapon = WeaponType.PISTOL;
+        if (refs.keys.current.has(map[Action.WEAPON_UZI])) player.currentWeapon = WeaponType.UZI;
+        if (refs.keys.current.has(map[Action.WEAPON_SHOTGUN])) player.currentWeapon = WeaponType.SHOTGUN;
+        if (refs.keys.current.has(map[Action.WEAPON_WALL])) player.currentWeapon = WeaponType.FAKE_WALL;
+        if (refs.keys.current.has(map[Action.WEAPON_BARREL])) player.currentWeapon = WeaponType.BARREL;
 
-    if (moveX !== 0 || moveY !== 0) {
-      const len = Math.sqrt(moveX * moveX + moveY * moveY);
-      moveX /= len;
-      moveY /= len;
-      Matter.Body.setVelocity(pBody, { x: moveX * PLAYER_SPEED, y: moveY * PLAYER_SPEED });
-    } else {
-      Matter.Body.setVelocity(pBody, { x: 0, y: 0 });
-    }
+        // 1. Player Movement
+        let moveX = 0;
+        let moveY = 0;
+        if (refs.keys.current.has(map[Action.MOVE_UP])) moveY -= 1;
+        if (refs.keys.current.has(map[Action.MOVE_DOWN])) moveY += 1;
+        if (refs.keys.current.has(map[Action.MOVE_LEFT])) moveX -= 1;
+        if (refs.keys.current.has(map[Action.MOVE_RIGHT])) moveX += 1;
 
-    player.pos.x = pBody.position.x;
-    player.pos.y = pBody.position.y;
+        if (moveX !== 0 || moveY !== 0) {
+          const len = Math.sqrt(moveX * moveX + moveY * moveY);
+          moveX /= len;
+          moveY /= len;
+          Matter.Body.setVelocity(pBody, { x: moveX * PLAYER_SPEED, y: moveY * PLAYER_SPEED });
+        } else {
+          Matter.Body.setVelocity(pBody, { x: 0, y: 0 });
+        }
 
-    // 2. Rotation (Auto-Aim)
-    let targetRotation = Math.atan2(worldMouseY - player.pos.y, worldMouseX - player.pos.x);
-    
-    if ([WeaponType.PISTOL, WeaponType.UZI, WeaponType.SHOTGUN].includes(refs.currentWeapon.current)) {
-      let nearestEnemy: Entity | null = null;
-      let minDst = Infinity;
-      const AUTO_AIM_RANGE = 600;
+        player.pos.x = pBody.position.x;
+        player.pos.y = pBody.position.y;
 
-      refs.enemies.current.forEach(e => {
-          if (e.dying) return; // Don't aim at dead bodies
-          const d = dist(player.pos, e.pos);
-          if (d < minDst) {
-              minDst = d;
-              nearestEnemy = e;
+        // 2. Rotation
+        // P1 uses Mouse, P2 uses Movement Direction (or maybe aiming keys if we had them)
+        // For P2 (Keyboard only), let's make them face moving direction if moving, or last direction.
+        // Or better: strict 8-way shooting if we had shoot keys. But we only have 1 shoot key.
+        // So auto-aim is critical for P2.
+        
+        let targetRotation = player.rotation;
+        
+        if (player.playerId === 1) {
+            // P1: Mouse Aim
+            targetRotation = Math.atan2(worldMouseY - player.pos.y, worldMouseX - player.pos.x);
+        } else if (moveX !== 0 || moveY !== 0) {
+             // P2: Face movement direction by default
+             targetRotation = Math.atan2(moveY, moveX);
+        }
+        
+        // Auto-Aim Override (for gun weapons)
+        if ([WeaponType.PISTOL, WeaponType.UZI, WeaponType.SHOTGUN].includes(player.currentWeapon)) {
+          let nearestEnemy: Entity | null = null;
+          let minDst = Infinity;
+          const AUTO_AIM_RANGE = 600;
+
+          refs.enemies.current.forEach(e => {
+              if (e.dying) return; // Don't aim at dead bodies
+              const d = dist(player.pos, e.pos);
+              if (d < minDst) {
+                  minDst = d;
+                  nearestEnemy = e;
+              }
+          });
+
+          if (nearestEnemy && minDst < AUTO_AIM_RANGE) {
+              // Simple auto-aim logic: if P2 is not moving or moving roughly towards enemy, lock on?
+              // For P1, mouse overrides unless mouse is close to player? No, Boxhead usually has strict mouse aim.
+              // But the existing code had auto-aim. Let's keep it.
+              // Existing logic: "if nearestEnemy < range, aim at it". This overrides mouse.
+              targetRotation = Math.atan2(nearestEnemy.pos.y - player.pos.y, nearestEnemy.pos.x - player.pos.x);
           }
-      });
+        }
+        player.rotation = targetRotation;
 
-      if (nearestEnemy && minDst < AUTO_AIM_RANGE) {
-          targetRotation = Math.atan2(nearestEnemy.pos.y - player.pos.y, nearestEnemy.pos.x - player.pos.x);
-      }
+        // 4. Attack / Interact
+        // P1 can use MouseDown OR Key. P2 uses Key.
+        const isP1MouseDown = player.playerId === 1 && refs.isMouseDown.current;
+        const isKeyAttack = refs.keys.current.has(map[Action.SHOOT]);
+        
+        const isAttacking = isP1MouseDown || isKeyAttack;
+        const weapon = WEAPONS[player.currentWeapon];
+        
+        if (isAttacking && time - (player.lastAttackTime || 0) > weapon.fireRate) {
+          const currentAmmo = player.ammo[weapon.type];
+          
+          if (currentAmmo !== 0) {
+             player.lastAttackTime = time;
+             
+             if (weapon.isDeployable) {
+                 handlePlacement(refs, weapon, player);
+             } else {
+                 handleShooting(refs, weapon, player);
+             }
+          }
+        }
+    }); // End Player Loop
+
+    // 3. Camera Follow (Midpoint of all active players)
+    if (activePlayers.length > 0) {
+        let sumX = 0; 
+        let sumY = 0;
+        activePlayers.forEach(p => {
+            sumX += p.pos.x;
+            sumY += p.pos.y;
+        });
+        const avgX = sumX / activePlayers.length;
+        const avgY = sumY / activePlayers.length;
+
+        const targetCamX = avgX - CANVAS_WIDTH / 2;
+        const targetCamY = avgY - CANVAS_HEIGHT / 2;
+        
+        refs.camera.current.x += (targetCamX - refs.camera.current.x) * 0.1;
+        refs.camera.current.y += (targetCamY - refs.camera.current.y) * 0.1;
+        refs.camera.current.x = Math.max(0, Math.min(WORLD_WIDTH - CANVAS_WIDTH, refs.camera.current.x));
+        refs.camera.current.y = Math.max(0, Math.min(WORLD_HEIGHT - CANVAS_HEIGHT, refs.camera.current.y));
     }
-    player.rotation = targetRotation;
-
-    // 3. Camera Follow
-    const targetCamX = player.pos.x - CANVAS_WIDTH / 2;
-    const targetCamY = player.pos.y - CANVAS_HEIGHT / 2;
-    refs.camera.current.x += (targetCamX - refs.camera.current.x) * 0.1;
-    refs.camera.current.y += (targetCamY - refs.camera.current.y) * 0.1;
-    refs.camera.current.x = Math.max(0, Math.min(WORLD_WIDTH - CANVAS_WIDTH, refs.camera.current.x));
-    refs.camera.current.y = Math.max(0, Math.min(WORLD_HEIGHT - CANVAS_HEIGHT, refs.camera.current.y));
-
-    // 4. Attack / Interact
-    const isAttacking = refs.isMouseDown.current || refs.keys.current.has(map[Action.SHOOT]);
-    const weapon = WEAPONS[refs.currentWeapon.current];
     
-    if (isAttacking && time - (player.lastAttackTime || 0) > weapon.fireRate) {
-      const currentAmmo = refs.ammo.current[weapon.type];
-      
-      if (currentAmmo !== 0) {
-         player.lastAttackTime = time;
-         
-         if (weapon.isDeployable) {
-             handlePlacement(refs, weapon);
-         } else {
-             handleShooting(refs, weapon, player);
-         }
-      }
-    }
-
     // 5. Enemy Spawning
+    // More players = more enemies?
     const difficulty = refs.difficultyLevel.current;
-    const maxEnemies = 40 + (refs.wave.current * 5) + (difficulty * 4);
-    const spawnRate = 0.08 * Math.pow(1.1, difficulty); 
+    const playerCount = Math.max(1, activePlayers.length);
+    const maxEnemies = (60 + (refs.wave.current * 8) + (difficulty * 5)) * (1 + (playerCount - 1) * 0.5);
+    const spawnRate = 0.15 * Math.pow(1.1, difficulty) * (1 + (playerCount - 1) * 0.5); 
 
     if (refs.enemies.current.length < maxEnemies) {
       if (Math.random() < spawnRate) {
-        spawnEnemy(refs, player);
+          // Target random alive player
+          const target = activePlayers[Math.floor(Math.random() * activePlayers.length)];
+          if (target) spawnEnemy(refs, target);
       }
     }
 
@@ -131,15 +188,29 @@ export const updateGame = (refs: GameRefs, time: number) => {
           return; // Skip AI
       }
 
-      const dToPlayer = dist(enemy.pos, player.pos);
-      const angle = Math.atan2(player.pos.y - enemy.pos.y, player.pos.x - enemy.pos.x);
+      // Find closest player
+      let nearestPlayer: Entity | null = null;
+      let minDist = Infinity;
+      
+      activePlayers.forEach(p => {
+          const d = dist(enemy.pos, p.pos);
+          if (d < minDist) {
+              minDist = d;
+              nearestPlayer = p;
+          }
+      });
+
+      if (!nearestPlayer) return; // No target
+
+      const angle = Math.atan2(nearestPlayer.pos.y - enemy.pos.y, nearestPlayer.pos.x - enemy.pos.x);
       enemy.rotation = angle;
 
       // Devil Virus Attack
       if (enemy.type === EntityType.DEVIL) {
-         if (dToPlayer < 600 && time - (enemy.lastAttackTime || 0) > DEVIL_FIRE_RATE) {
+         const dToTarget = minDist;
+         if (dToTarget < 600 && time - (enemy.lastAttackTime || 0) > DEVIL_FIRE_RATE) {
              enemy.lastAttackTime = time;
-             spawnVirus(refs, enemy, player);
+             spawnVirus(refs, enemy, nearestPlayer);
          }
       }
 
@@ -165,17 +236,27 @@ export const updateGame = (refs: GameRefs, time: number) => {
     refs.frame.current++;
     if (refs.frame.current % 10 === 0) {
       refs.callbacks.current.onScoreUpdate(refs.score.current, refs.multiplier.current);
-      refs.callbacks.current.onHealthUpdate(player.hp);
-      refs.callbacks.current.onAmmoUpdate(refs.currentWeapon.current, refs.ammo.current[refs.currentWeapon.current]);
+      
+      // Prepare data for UI
+      const hps = players.map(p => p.hp);
+      refs.callbacks.current.onHealthUpdate(hps);
+      
+      const p1 = players[0];
+      const p2 = players[1]; // undefined if single player
+      
+      const p1Info = { weapon: p1.currentWeapon, ammo: p1.ammo[p1.currentWeapon] };
+      const p2Info = p2 ? { weapon: p2.currentWeapon, ammo: p2.ammo[p2.currentWeapon] } : undefined;
+      
+      refs.callbacks.current.onAmmoUpdate(p1Info, p2Info);
     }
 };
 
 // --- Helpers for Update ---
 
-const handlePlacement = (refs: GameRefs, weapon: any) => {
+const handlePlacement = (refs: GameRefs, weapon: any, player: PlayerEntity) => {
     const gridSize = 16; 
-    const rawX = refs.player.current.pos.x;
-    const rawY = refs.player.current.pos.y;
+    const rawX = player.pos.x;
+    const rawY = player.pos.y;
     
     const snapX = Math.round(rawX / gridSize) * gridSize;
     const snapY = Math.round(rawY / gridSize) * gridSize;
@@ -187,7 +268,7 @@ const handlePlacement = (refs: GameRefs, weapon: any) => {
     if (!isStacked) {
         refs.soundSystem.current?.playBuild(); 
 
-        if (weapon.ammo !== -1) refs.ammo.current[weapon.type] = Math.max(0, refs.ammo.current[weapon.type] - 1);
+        if (weapon.ammo !== -1) player.ammo[weapon.type] = Math.max(0, player.ammo[weapon.type] - 1);
         
         const radius = 8; 
         let body;
@@ -233,9 +314,9 @@ const handlePlacement = (refs: GameRefs, weapon: any) => {
     }
 };
 
-const handleShooting = (refs: GameRefs, weapon: any, player: Entity) => {
+const handleShooting = (refs: GameRefs, weapon: any, player: PlayerEntity) => {
     refs.soundSystem.current?.playShoot(weapon.type); 
-    if (weapon.ammo !== -1) refs.ammo.current[weapon.type] = Math.max(0, refs.ammo.current[weapon.type] - 1);
+    if (weapon.ammo !== -1) player.ammo[weapon.type] = Math.max(0, player.ammo[weapon.type] - 1);
     
     for (let i = 0; i < weapon.count; i++) {
       const spread = (Math.random() - 0.5) * weapon.spread;

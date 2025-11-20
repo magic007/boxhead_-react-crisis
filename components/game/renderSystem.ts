@@ -1,7 +1,7 @@
 
 import { GameRefs } from './types';
 import { WORLD_WIDTH, WORLD_HEIGHT, COLORS, WEAPONS, CANVAS_WIDTH } from '../../constants';
-import { Entity, EntityType, WeaponType } from '../../types';
+import { Entity, PlayerEntity, EntityType, WeaponType } from '../../types';
 
 export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
     ctx.save();
@@ -140,8 +140,10 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
     });
 
     // Entities
-    refs.enemies.current.forEach(e => drawEntity(ctx, e, refs));
-    if (!refs.player.current.isDead) drawEntity(ctx, refs.player.current, refs);
+    refs.enemies.current.forEach(e => drawEntity(ctx, e));
+    refs.players.current.forEach(p => {
+        if (!p.isDead) drawEntity(ctx, p);
+    });
 
     // Bullets
     refs.bullets.current.forEach(b => {
@@ -190,24 +192,28 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
       ctx.globalAlpha = 1.0;
     });
 
-    // Placement Preview
-    if (WEAPONS[refs.currentWeapon.current].isDeployable) {
-        const px = refs.player.current.pos.x;
-        const py = refs.player.current.pos.y;
-        
-        ctx.save();
-        ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth = 2;
-        ctx.translate(px, py);
-        ctx.beginPath();
-        if (refs.currentWeapon.current === WeaponType.BARREL) {
-            ctx.arc(0, 0, 10, 0, Math.PI*2);
-        } else {
-            ctx.rect(-8, -8, 16, 16); 
+    // Placement Preview (For each player)
+    refs.players.current.forEach(p => {
+        if (p.isDead) return;
+        const weaponConfig = WEAPONS[p.currentWeapon];
+        if (weaponConfig.isDeployable) {
+            const px = p.pos.x;
+            const py = p.pos.y;
+            
+            ctx.save();
+            ctx.strokeStyle = p.playerId === 1 ? '#00ff00' : '#0000ff';
+            ctx.lineWidth = 2;
+            ctx.translate(px, py);
+            ctx.beginPath();
+            if (p.currentWeapon === WeaponType.BARREL) {
+                ctx.arc(0, 0, 10, 0, Math.PI*2);
+            } else {
+                ctx.rect(-8, -8, 16, 16); 
+            }
+            ctx.stroke();
+            ctx.restore();
         }
-        ctx.stroke();
-        ctx.restore();
-    }
+    });
 
     ctx.restore();
 
@@ -224,24 +230,26 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
     }
 };
 
-const drawEntity = (ctx: CanvasRenderingContext2D, e: Entity, refs: GameRefs) => {
+const drawEntity = (ctx: CanvasRenderingContext2D, e: Entity) => {
     ctx.save();
     ctx.translate(e.pos.x, e.pos.y);
     
     // Info HUD for player
     if (e.type === EntityType.PLAYER) {
+      const p = e as PlayerEntity;
       ctx.save();
-      ctx.fillStyle = '#000';
+      ctx.fillStyle = p.playerId === 1 ? '#000' : '#0000ff';
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
       let weaponName = "手枪";
-      const cw = refs.currentWeapon.current;
+      const cw = p.currentWeapon;
       if (cw === WeaponType.UZI) weaponName = "冲锋枪";
       if (cw === WeaponType.SHOTGUN) weaponName = "霰弹枪";
       if (cw === WeaponType.FAKE_WALL) weaponName = "假墙";
       if (cw === WeaponType.BARREL) weaponName = "油桶";
       
-      ctx.fillText(weaponName, 0, -e.radius - 10);
+      const label = `P${p.playerId}: ${weaponName}`;
+      ctx.fillText(label, 0, -e.radius - 10);
       ctx.fillStyle = 'red';
       ctx.fillRect(-10, -e.radius - 6, 20, 3);
       ctx.fillStyle = '#00ff00';
@@ -257,7 +265,7 @@ const drawEntity = (ctx: CanvasRenderingContext2D, e: Entity, refs: GameRefs) =>
     ctx.fillStyle = e.type === EntityType.PLAYER ? COLORS.PLAYER_SHIRT : e.color;
     ctx.fillRect(-s/2, -s/2, s, s);
 
-    ctx.fillStyle = e.type === EntityType.PLAYER ? COLORS.PLAYER_SKIN : '#cccccc';
+    ctx.fillStyle = e.type === EntityType.PLAYER ? (e as PlayerEntity).color : '#cccccc'; // Use Player specific color
     if (e.type === EntityType.DEVIL) ctx.fillStyle = '#ff0000';
     const headSize = s * 0.6;
     ctx.fillRect(-headSize/2 + 2, -headSize/2, headSize, headSize);

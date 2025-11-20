@@ -8,17 +8,28 @@ import { Action, getSavedKeyMap } from './components/game/inputConfig';
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [playerCount, setPlayerCount] = useState(1);
   const [score, setScore] = useState(0);
   const [multiplier, setMultiplier] = useState(1);
-  const [hp, setHp] = useState(100);
-  const [weapon, setWeapon] = useState<string>(WeaponType.PISTOL);
-  const [ammo, setAmmo] = useState(-1);
+  
+  // Player 1 Stats
+  const [p1Stats, setP1Stats] = useState({
+      hp: 100,
+      weapon: WeaponType.PISTOL,
+      ammo: -1
+  });
+  
+  // Player 2 Stats (Optional)
+  const [p2Stats, setP2Stats] = useState<{hp: number, weapon: string, ammo: number} | null>(null);
+  
   const [finalScore, setFinalScore] = useState(0);
 
-  const handleStart = useCallback(() => {
+  const handleStart = useCallback((count: number) => {
+    setPlayerCount(count);
     setScore(0);
     setMultiplier(1);
-    setHp(100);
+    setP1Stats({ hp: 100, weapon: WeaponType.PISTOL, ammo: -1 });
+    setP2Stats(count === 2 ? { hp: 100, weapon: WeaponType.PISTOL, ammo: -1 } : null);
     setGameState(GameState.PLAYING);
   }, []);
 
@@ -32,13 +43,18 @@ export default function App() {
     setMultiplier(m);
   }, []);
 
-  const handleHealthUpdate = useCallback((h: number) => {
-    setHp(h);
+  const handleHealthUpdate = useCallback((hps: number[]) => {
+    setP1Stats(prev => ({ ...prev, hp: hps[0] }));
+    if (hps[1] !== undefined) {
+        setP2Stats(prev => prev ? ({ ...prev, hp: hps[1] }) : null);
+    }
   }, []);
 
-  const handleAmmoUpdate = useCallback((w: string, a: number) => {
-    setWeapon(w);
-    setAmmo(a);
+  const handleAmmoUpdate = useCallback((p1: {weapon: string, ammo: number}, p2?: {weapon: string, ammo: number}) => {
+    setP1Stats(prev => ({ ...prev, ...p1 }));
+    if (p2) {
+        setP2Stats(prev => prev ? ({ ...prev, ...p2 }) : null);
+    }
   }, []);
 
   useEffect(() => {
@@ -63,6 +79,7 @@ export default function App() {
       <div className="relative">
         <GameCanvas 
           gameState={gameState}
+          playerCount={playerCount}
           onScoreUpdate={handleScoreUpdate}
           onHealthUpdate={handleHealthUpdate}
           onAmmoUpdate={handleAmmoUpdate}
@@ -73,9 +90,8 @@ export default function App() {
           <UIOverlay 
             score={score} 
             multiplier={multiplier} 
-            hp={hp} 
-            currentWeapon={weapon}
-            ammo={ammo}
+            p1Stats={p1Stats}
+            p2Stats={p2Stats}
           />
         )}
 
@@ -85,22 +101,28 @@ export default function App() {
             <h1 className="text-6xl font-bold mb-2 text-red-600 tracking-tighter">僵尸危机 3</h1>
             <h2 className="text-2xl mb-8 text-gray-300">BOXHEAD: ZOMBIE WARS</h2>
             
-            <div className="space-y-4 text-center">
+            <div className="space-y-4 text-center flex flex-col items-center">
               <button 
-                onClick={handleStart}
-                className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xl uppercase tracking-widest transition-colors border-2 border-red-800 w-full"
+                onClick={() => handleStart(1)}
+                className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xl uppercase tracking-widest transition-colors border-2 border-red-800 w-64"
               >
-                开始游戏 (Start Game)
+                单人游戏 (1P)
+              </button>
+              <button 
+                onClick={() => handleStart(2)}
+                className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xl uppercase tracking-widest transition-colors border-2 border-blue-800 w-64"
+              >
+                双人合作 (2P)
               </button>
               <button 
                 onClick={() => setIsSettingsOpen(true)}
-                className="px-8 py-3 bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl uppercase tracking-widest transition-colors border-2 border-gray-500 w-full"
+                className="px-8 py-3 bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl uppercase tracking-widest transition-colors border-2 border-gray-500 w-64"
               >
-                按键设置 (Settings)
+                按键设置
               </button>
               <div className="text-sm text-gray-400 mt-8 space-y-1 font-mono">
-                <p>默认: WASD 移动, J 攻击, 1-5 切枪</p>
-                <p>(可在设置中修改所有按键)</p>
+                <p>1P: WASD + Space (攻击) + 1-5</p>
+                <p>2P: Arrows + Numpad 0 (攻击) + Num 1-5</p>
               </div>
             </div>
           </div>
@@ -144,7 +166,7 @@ export default function App() {
             <p className="text-2xl mb-8">最终得分: {finalScore}</p>
             <div className="flex flex-col gap-4">
               <button 
-                onClick={handleStart}
+                onClick={() => handleStart(playerCount)}
                 className="px-8 py-3 bg-black hover:bg-gray-800 text-white font-bold text-xl border-2 border-white min-w-[200px]"
               >
                 再试一次 (Try Again)
@@ -154,6 +176,12 @@ export default function App() {
                 className="px-8 py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold text-xl border-2 border-gray-500 min-w-[200px]"
               >
                 按键设置 (Settings)
+              </button>
+              <button 
+                onClick={() => setGameState(GameState.MENU)}
+                className="px-8 py-3 bg-red-800 hover:bg-red-700 text-white font-bold text-xl border-2 border-red-600 min-w-[200px]"
+              >
+                退出游戏 (Quit)
               </button>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Action, KeyMap, getSavedKeyMap, saveKeyMap, DEFAULT_KEYMAP, ACTION_LABELS } from './game/inputConfig';
+import { Action, KeyMap, getSavedKeyMap, saveKeyMap, DEFAULT_KEYMAP_P1, DEFAULT_KEYMAP_P2, ACTION_LABELS } from './game/inputConfig';
 
 interface KeybindingModalProps {
   isOpen: boolean;
@@ -7,15 +7,16 @@ interface KeybindingModalProps {
 }
 
 export const KeybindingModal: React.FC<KeybindingModalProps> = ({ isOpen, onClose }) => {
-  const [keyMap, setKeyMap] = useState<KeyMap>(getSavedKeyMap());
+  const [selectedPlayer, setSelectedPlayer] = useState<number>(1);
+  const [keyMap, setKeyMap] = useState<KeyMap>(getSavedKeyMap(1));
   const [listeningAction, setListeningAction] = useState<Action | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setKeyMap(getSavedKeyMap());
+      setKeyMap(getSavedKeyMap(selectedPlayer));
       setListeningAction(null);
     }
-  }, [isOpen]);
+  }, [isOpen, selectedPlayer]);
 
   useEffect(() => {
     if (!listeningAction) return;
@@ -43,12 +44,12 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({ isOpen, onClos
   };
 
   const handleSave = () => {
-    saveKeyMap(keyMap);
+    saveKeyMap(selectedPlayer, keyMap);
     onClose();
   };
   
   const handleReset = () => {
-      setKeyMap(DEFAULT_KEYMAP);
+      setKeyMap(selectedPlayer === 1 ? DEFAULT_KEYMAP_P1 : DEFAULT_KEYMAP_P2);
       setListeningAction(null);
   };
 
@@ -59,6 +60,21 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({ isOpen, onClos
       <div className="bg-gray-900 border-2 border-gray-700 p-6 rounded-lg w-[500px] max-h-[80vh] overflow-y-auto shadow-2xl">
         <h2 className="text-2xl font-bold text-white mb-6 text-center uppercase tracking-wider">按键设置 (CONTROLS)</h2>
         
+        <div className="flex justify-center gap-4 mb-6">
+            <button 
+                onClick={() => setSelectedPlayer(1)}
+                className={`px-4 py-2 font-bold rounded ${selectedPlayer === 1 ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-400'}`}
+            >
+                玩家 1 (P1)
+            </button>
+            <button 
+                onClick={() => setSelectedPlayer(2)}
+                className={`px-4 py-2 font-bold rounded ${selectedPlayer === 2 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400'}`}
+            >
+                玩家 2 (P2)
+            </button>
+        </div>
+
         <div className="space-y-3 mb-8">
           {Object.values(Action).map((action) => (
             <div key={action} className="flex items-center justify-between bg-gray-800 p-3 rounded hover:bg-gray-750 transition-colors">
