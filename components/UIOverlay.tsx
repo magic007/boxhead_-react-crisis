@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { WeaponType } from '../types';
+import { getSavedKeyMap, Action, subscribeToKeyMapChange, KeyMap } from './game/inputConfig';
 
 interface UIOverlayProps {
   score: number;
@@ -10,7 +11,20 @@ interface UIOverlayProps {
 }
 
 const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, hp, currentWeapon, ammo }) => {
-  
+  const [keyMap, setKeyMap] = useState<KeyMap>(getSavedKeyMap());
+
+  useEffect(() => {
+    return subscribeToKeyMapChange((newMap) => setKeyMap(newMap));
+  }, []);
+
+  const getKeyLabel = (action: Action) => {
+      const code = keyMap[action];
+      if (code.startsWith('Digit')) return code.replace('Digit', '');
+      if (code.startsWith('Key')) return code.replace('Key', '');
+      if (code.startsWith('Arrow')) return code.replace('Arrow', 'Arr');
+      return code;
+  };
+
   const getWeaponName = (type: string) => {
     switch(type) {
       case WeaponType.PISTOL: return '手枪';
@@ -58,22 +72,22 @@ const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, hp, currentWea
       {/* 底部: 武器选择提示 */}
       <div className="absolute bottom-[-520px] left-1/2 -translate-x-1/2 flex gap-2">
          <div className={`bg-gray-900/80 px-2 py-1 text-xs border ${currentWeapon === WeaponType.PISTOL ? 'border-yellow-400 text-yellow-400' : 'border-gray-500 text-gray-500'}`}>
-           [1] 手枪
+           [{getKeyLabel(Action.WEAPON_PISTOL)}] 手枪
          </div>
          <div className={`bg-gray-900/80 px-2 py-1 text-xs border ${currentWeapon === WeaponType.UZI ? 'border-yellow-400 text-yellow-400' : 'border-gray-500 text-gray-500'}`}>
-           [2] 冲锋枪
+           [{getKeyLabel(Action.WEAPON_UZI)}] 冲锋枪
          </div>
          <div className={`bg-gray-900/80 px-2 py-1 text-xs border ${currentWeapon === WeaponType.SHOTGUN ? 'border-yellow-400 text-yellow-400' : 'border-gray-500 text-gray-500'}`}>
-           [3] 霰弹枪
+           [{getKeyLabel(Action.WEAPON_SHOTGUN)}] 霰弹枪
          </div>
          <div className={`bg-gray-900/80 px-2 py-1 text-xs border ${currentWeapon === WeaponType.FAKE_WALL ? 'border-yellow-400 text-yellow-400' : 'border-gray-500 text-gray-500'}`}>
-           [4] 假墙
+           [{getKeyLabel(Action.WEAPON_WALL)}] 假墙
          </div>
          <div className={`bg-gray-900/80 px-2 py-1 text-xs border ${currentWeapon === WeaponType.BARREL ? 'border-yellow-400 text-yellow-400' : 'border-gray-500 text-gray-500'}`}>
-           [5] 油桶
+           [{getKeyLabel(Action.WEAPON_BARREL)}] 油桶
          </div>
          <div className="bg-red-900/80 px-2 py-1 text-xs border border-red-500 text-red-200 ml-4">
-           [J] 攻击 / 放置
+           [{getKeyLabel(Action.SHOOT)}] 攻击 / 放置
          </div>
       </div>
     </div>

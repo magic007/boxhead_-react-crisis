@@ -6,6 +6,7 @@ import { CANVAS_WIDTH, CANVAS_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_SPEED, Z
 import { WeaponType, EntityType, Entity, Bullet } from '../../types';
 import { dist, spawnParticles } from './utils';
 import { createExplosion } from './physicsSystem';
+import { Action } from './inputConfig';
 
 export const updateGame = (refs: GameRefs, time: number) => {
     const player = refs.player.current;
@@ -31,14 +32,15 @@ export const updateGame = (refs: GameRefs, time: number) => {
 
     const worldMouseX = refs.mouse.current.x + refs.camera.current.x;
     const worldMouseY = refs.mouse.current.y + refs.camera.current.y;
+    const map = refs.keyMap.current;
     
     // 1. Player Movement
     let moveX = 0;
     let moveY = 0;
-    if (refs.keys.current.has('KeyW') || refs.keys.current.has('ArrowUp')) moveY -= 1;
-    if (refs.keys.current.has('KeyS') || refs.keys.current.has('ArrowDown')) moveY += 1;
-    if (refs.keys.current.has('KeyA') || refs.keys.current.has('ArrowLeft')) moveX -= 1;
-    if (refs.keys.current.has('KeyD') || refs.keys.current.has('ArrowRight')) moveX += 1;
+    if (refs.keys.current.has(map[Action.MOVE_UP])) moveY -= 1;
+    if (refs.keys.current.has(map[Action.MOVE_DOWN])) moveY += 1;
+    if (refs.keys.current.has(map[Action.MOVE_LEFT])) moveX -= 1;
+    if (refs.keys.current.has(map[Action.MOVE_RIGHT])) moveX += 1;
 
     if (moveX !== 0 || moveY !== 0) {
       const len = Math.sqrt(moveX * moveX + moveY * moveY);
@@ -84,7 +86,7 @@ export const updateGame = (refs: GameRefs, time: number) => {
     refs.camera.current.y = Math.max(0, Math.min(WORLD_HEIGHT - CANVAS_HEIGHT, refs.camera.current.y));
 
     // 4. Attack / Interact
-    const isAttacking = refs.isMouseDown.current || refs.keys.current.has('KeyJ');
+    const isAttacking = refs.isMouseDown.current || refs.keys.current.has(map[Action.SHOOT]);
     const weapon = WEAPONS[refs.currentWeapon.current];
     
     if (isAttacking && time - (player.lastAttackTime || 0) > weapon.fireRate) {

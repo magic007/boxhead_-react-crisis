@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 // @ts-ignore
 import Matter from 'matter-js';
-import { GameState, Entity, Vector2, Bullet, Particle, WeaponType, Wall } from '../types';
+import { GameState, Entity, PlayerEntity, Vector2, Bullet, Particle, WeaponType, Wall } from '../types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../constants';
 import { GameRefs } from './game/types';
 import { generateMapWalls } from './game/mapSystem';
@@ -10,13 +10,15 @@ import { initPhysics, resetGamePhysics } from './game/physicsSystem';
 import { updateGame } from './game/updateSystem';
 import { renderGame } from './game/renderSystem';
 import { SoundSystem } from './game/soundSystem';
+import { getSavedKeyMap, Action, KeyMap, subscribeToKeyMapChange } from './game/inputConfig';
 
 interface GameCanvasProps {
   onScoreUpdate: (score: number, multiplier: number) => void;
-  onHealthUpdate: (hp: number) => void;
-  onAmmoUpdate: (weapon: string, ammo: number) => void;
+  onHealthUpdate: (hp: number[]) => void;
+  onAmmoUpdate: (p1: {weapon: string, ammo: number}, p2?: {weapon: string, ammo: number}) => void;
   onGameOver: (score: number) => void;
   gameState: GameState;
+  playerCount: number;
 }
 
 const GameCanvas: React.FC<GameCanvasProps> = ({ 
@@ -24,7 +26,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   onHealthUpdate, 
   onAmmoUpdate, 
   onGameOver,
-  gameState 
+  gameState,
+  playerCount
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -41,7 +44,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const gameRefs: GameRefs = {
     engine: useRef<any>(null).current,
-    player: useRef<Entity>({} as Entity),
+    players: useRef<PlayerEntity[]>([]),
     enemies: useRef<Entity[]>([]),
     obstacles: useRef<Entity[]>([]),
     items: useRef<Entity[]>([]),
@@ -50,6 +53,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     bloodDecals: useRef<Particle[]>([]),
     camera: useRef<Vector2>({ x: 0, y: 0 }),
     keys: useRef<Set<string>>(new Set()),
+    keyMaps: useRef<Record<number, KeyMap>>({
+        1: getSavedKeyMap(1),
+        2: getSavedKeyMap(2)
+    }),
     mouse: useRef<Vector2>({ x: 0, y: 0 }),
     isMouseDown: useRef(false),
     score: useRef(0),
@@ -60,15 +67,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     difficultyLevel: useRef(0),
     gameMessage: useRef<string | null>(null),
     gameMessageTimer: useRef(0),
-    currentWeapon: useRef<WeaponType>(WeaponType.PISTOL),
-    ammo: useRef<Record<WeaponType, number>>({
-      [WeaponType.PISTOL]: 10000,
-      [WeaponType.UZI]: 10000,
-      [WeaponType.SHOTGUN]: 10000,
-      [WeaponType.FAKE_WALL]: 10000,
-      [WeaponType.BARREL]: 10000,
-      [WeaponType.GRENADE]: -1
-    }),
     mapWalls: useRef<Wall[]>(generateMapWalls()),
     soundSystem: soundSystemRef as React.MutableRefObject<SoundSystem>,
     callbacks: callbacksRef
@@ -79,6 +77,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     get: () => engineRef.current,
     set: (v) => { engineRef.current = v; }
   });
+
+  useEffect(() => {
+    const unsub1 = subscribeToKeyMapChange((pid, newMap) => {
+        gameRefs.keyMaps.current[pid] = newMap;
+    });
+    return () => { unsub1(); };
+  }, []);
 
   useEffect(() => {
     const engine = initPhysics(gameRefs);
@@ -108,28 +113,22 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     gameRefs.wave.current = 1;
     gameRefs.difficultyLevel.current = 0;
     gameRefs.gameMessage.current = null;
-    gameRefs.ammo.current = {
-      [WeaponType.PISTOL]: 10000,
-      [WeaponType.UZI]: 10000,
-      [WeaponType.SHOTGUN]: 10000,
-      [WeaponType.FAKE_WALL]: 10000,
-      [WeaponType.BARREL]: 10000,
-      [WeaponType.GRENADE]: -1
-    };
-    gameRefs.currentWeapon.current = WeaponType.PISTOL;
     
-    resetGamePhysics(gameRefs);
+    resetGamePhysics(gameRefs, playerCount); // Pass playerCount to init players
     gameRefs.camera.current = { x: 0, y: 0 }; 
     
     // Resume audio context on game start
     gameRefs.soundSystem.current?.resume();
-  }, []);
+  }, [playerCount]);
 
   // Force reset when entering PLAYING state
+  const prevGameState = useRef<GameState>(gameState);
   useEffect(() => {
-    if (gameState === GameState.PLAYING) {
+    if (gameState === GameState.PLAYING && 
+       (prevGameState.current === GameState.MENU || prevGameState.current === GameState.GAME_OVER)) {
         resetGame();
     }
+    prevGameState.current = gameState;
   }, [gameState, resetGame]);
 
 
@@ -168,11 +167,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       gameRefs.soundSystem.current?.resume(); // Unlock audio safely
       gameRefs.keys.current.add(e.code);
-      if (e.key === '1') gameRefs.currentWeapon.current = WeaponType.PISTOL;
-      if (e.key === '2') gameRefs.currentWeapon.current = WeaponType.UZI;
-      if (e.key === '3') gameRefs.currentWeapon.current = WeaponType.SHOTGUN;
-      if (e.key === '4') gameRefs.currentWeapon.current = WeaponType.FAKE_WALL;
-      if (e.key === '5') gameRefs.currentWeapon.current = WeaponType.BARREL;
+      // Weapon switching is now handled in updateSystem to support multi-player
     };
     const handleKeyUp = (e: KeyboardEvent) => gameRefs.keys.current.delete(e.code);
     const handleMouseMove = (e: MouseEvent) => {

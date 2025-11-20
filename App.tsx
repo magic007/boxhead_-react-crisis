@@ -1,10 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import GameCanvas from './components/GameCanvas';
 import UIOverlay from './components/UIOverlay';
+import { KeybindingModal } from './components/KeybindingModal';
 import { GameState, WeaponType } from './types';
+import { Action, getSavedKeyMap } from './components/game/inputConfig';
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [score, setScore] = useState(0);
   const [multiplier, setMultiplier] = useState(1);
   const [hp, setHp] = useState(100);
@@ -38,6 +41,22 @@ export default function App() {
     setAmmo(a);
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const keyMap = getSavedKeyMap();
+      if (e.code === keyMap[Action.PAUSE]) {
+        setGameState(prev => {
+          if (prev === GameState.PLAYING) return GameState.PAUSED;
+          if (prev === GameState.PAUSED) return GameState.PLAYING;
+          return prev;
+        });
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <div className="relative w-screen h-screen bg-zinc-900 flex items-center justify-center select-none">
       {/* Game Container */}
@@ -69,30 +88,74 @@ export default function App() {
             <div className="space-y-4 text-center">
               <button 
                 onClick={handleStart}
-                className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xl uppercase tracking-widest transition-colors border-2 border-red-800"
+                className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xl uppercase tracking-widest transition-colors border-2 border-red-800 w-full"
               >
                 开始游戏 (Start Game)
               </button>
+              <button 
+                onClick={() => setIsSettingsOpen(true)}
+                className="px-8 py-3 bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl uppercase tracking-widest transition-colors border-2 border-gray-500 w-full"
+              >
+                按键设置 (Settings)
+              </button>
               <div className="text-sm text-gray-400 mt-8 space-y-1 font-mono">
-                <p>WASD / 方向键 移动</p>
-                <p>鼠标 或 J 键 攻击</p>
-                <p>按键 1-5 切换武器</p>
+                <p>默认: WASD 移动, J 攻击, 1-5 切枪</p>
+                <p>(可在设置中修改所有按键)</p>
               </div>
             </div>
           </div>
         )}
+
+        {/* Pause Menu */}
+        {gameState === GameState.PAUSED && (
+          <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white z-10 rounded-lg backdrop-blur-sm">
+            <h1 className="text-5xl font-bold mb-8 text-yellow-400 tracking-wider">游戏暂停</h1>
+            
+            <div className="flex flex-col gap-4">
+              <button 
+                onClick={() => setGameState(GameState.PLAYING)}
+                className="px-8 py-3 bg-green-600 hover:bg-green-500 text-white font-bold text-xl border-2 border-green-400 min-w-[200px] shadow-lg"
+              >
+                继续游戏 (Resume)
+              </button>
+              <button 
+                onClick={() => setIsSettingsOpen(true)}
+                className="px-8 py-3 bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl border-2 border-gray-500 min-w-[200px]"
+              >
+                按键设置 (Settings)
+              </button>
+              <button 
+                onClick={() => setGameState(GameState.MENU)}
+                className="px-8 py-3 bg-red-900 hover:bg-red-800 text-white font-bold text-xl border-2 border-red-700 min-w-[200px]"
+              >
+                退出游戏 (Quit)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Keybinding Modal */}
+        <KeybindingModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 
         {/* Game Over Screen */}
         {gameState === GameState.GAME_OVER && (
           <div className="absolute inset-0 bg-red-900/90 flex flex-col items-center justify-center text-white z-10 rounded-lg">
             <h1 className="text-5xl font-bold mb-4">游戏结束</h1>
             <p className="text-2xl mb-8">最终得分: {finalScore}</p>
-            <button 
-              onClick={handleStart}
-              className="px-8 py-3 bg-black hover:bg-gray-800 text-white font-bold text-xl border-2 border-white"
-            >
-              再试一次 (Try Again)
-            </button>
+            <div className="flex flex-col gap-4">
+              <button 
+                onClick={handleStart}
+                className="px-8 py-3 bg-black hover:bg-gray-800 text-white font-bold text-xl border-2 border-white min-w-[200px]"
+              >
+                再试一次 (Try Again)
+              </button>
+              <button 
+                onClick={() => setIsSettingsOpen(true)}
+                className="px-8 py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold text-xl border-2 border-gray-500 min-w-[200px]"
+              >
+                按键设置 (Settings)
+              </button>
+            </div>
           </div>
         )}
       </div>

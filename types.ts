@@ -2,6 +2,7 @@
 export enum GameState {
   MENU,
   PLAYING,
+  PAUSED,
   GAME_OVER
 }
 
@@ -57,6 +58,14 @@ export interface Entity {
   isExplosive?: boolean; // 是否易爆（油桶）
   // Physics body from Matter.js (typed as any to avoid strict lib dependency issues in types file)
   body?: any; 
+}
+
+export interface PlayerEntity extends Entity {
+  playerId: number; // 1 or 2
+  currentWeapon: WeaponType;
+  ammo: Record<WeaponType, number>;
+  score: number; // Individual score (reserved)
+  multiplier: number;
 }
 
 export interface Bullet {

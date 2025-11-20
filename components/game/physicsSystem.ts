@@ -2,7 +2,7 @@
 // @ts-ignore
 import Matter from 'matter-js';
 import { GameRefs } from './types';
-import { Bullet, Entity, EntityType, WeaponType, Vector2 } from '../../types';
+import { Bullet, Entity, PlayerEntity, EntityType, WeaponType, Vector2 } from '../../types';
 import { COLORS, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_HP, HEALTH_PACK_VAL, CAT_DEFAULT, CAT_PLAYER, CAT_ENEMY, CAT_BULLET, CAT_WALL, CAT_OBSTACLE, CAT_ENEMY_BULLET, CAT_ITEM } from '../../constants';
 import { dist, spawnParticles } from './utils';
 
@@ -38,15 +38,17 @@ const initPhysics = (refs: GameRefs) => {
           // Item Pickup (Player vs Item)
           if ((bodyA.label === 'PLAYER' && bodyB.label === 'ITEM') || (bodyB.label === 'PLAYER' && bodyA.label === 'ITEM')) {
               const itemBody = bodyA.label === 'ITEM' ? bodyA : bodyB;
+              const playerBody = bodyA.label === 'PLAYER' ? bodyA : bodyB;
               const item = itemBody.plugin.entity as Entity;
+              const player = playerBody.plugin.entity as PlayerEntity;
               
-              if (item && !item.isDead) {
+              if (item && !item.isDead && player && !player.isDead) {
                   item.isDead = true;
                   refs.soundSystem.current?.playPickup();
                   
                   if (item.type === EntityType.ITEM_HEALTH) {
-                      refs.player.current.hp = Math.min(100, refs.player.current.hp + HEALTH_PACK_VAL);
-                      spawnParticles(refs, refs.player.current.pos, 10, '#00FF00', 2, false);
+                      player.hp = Math.min(100, player.hp + HEALTH_PACK_VAL);
+                      spawnParticles(refs, player.pos, 10, '#00FF00', 2, false);
                   }
               }
               return;
@@ -66,13 +68,16 @@ const initPhysics = (refs: GameRefs) => {
               // 1a. Enemy Bullet (Virus) hits Player
               if (bullet.isVirus) {
                   if (otherBody.label === 'PLAYER') {
-                      bullet.active = false;
-                      refs.player.current.hp -= bullet.damage;
-                      refs.soundSystem.current?.playHit(); // Safe Sound
-                      spawnParticles(refs, refs.player.current.pos, 5, '#00FF00', 3, false);
-                      if (refs.player.current.hp <= 0) {
-                          refs.soundSystem.current?.playGameOver(); // Safe Sound
-                          refs.callbacks.current.onGameOver(refs.score.current);
+                      const player = otherBody.plugin.entity as PlayerEntity;
+                      if (player && !player.isDead) {
+                        bullet.active = false;
+                        player.hp -= bullet.damage;
+                        refs.soundSystem.current?.playHit(); // Safe Sound
+                        spawnParticles(refs, player.pos, 5, '#00FF00', 3, false);
+                        if (player.hp <= 0) {
+                            player.isDead = true; // Just mark this player as dead
+                            // Game over logic is checked elsewhere (all dead)
+                        }
                       }
                   } else if (otherBody.label === 'WALL' || otherBody.label === 'OBSTACLE') {
                       bullet.active = false;
@@ -98,7 +103,7 @@ const initPhysics = (refs: GameRefs) => {
                       spawnParticles(refs, enemy.pos, 3, COLORS.BLOOD, 2, true);
                       
                       // --- Knockback Logic (Velocity Override) ---
-                      const knockbackSpeed = bullet.damage * 0.6; // Increased knockback scaling
+                      const knockbackSpeed = bullet.damage * 0.2; // Reduced knockback scaling
                       const knockbackDir = { x: bullet.velocity.x, y: bullet.velocity.y };
                       
                       // Normalize
@@ -199,6 +204,9 @@ const initPhysics = (refs: GameRefs) => {
 
                const now = Date.now();
                if (enemy && obs && now - (enemy.lastAttackTime || 0) > 1000) {
+                   // Zombies don't attack explosive barrels
+                   if (obs.isExplosive) return;
+
                    enemy.lastAttackTime = now;
                    obs.hp -= 20;
                    refs.soundSystem.current?.playHit(); // Safe Sound
@@ -209,19 +217,21 @@ const initPhysics = (refs: GameRefs) => {
           // Zombie attacks Player (Continuous Damage)
           if ((bodyA.label === 'PLAYER' && bodyB.label === 'ENEMY') || (bodyB.label === 'PLAYER' && bodyA.label === 'ENEMY')) {
               const enemyBody = bodyA.label === 'ENEMY' ? bodyA : bodyB;
+              const playerBody = bodyA.label === 'PLAYER' ? bodyA : bodyB;
               const enemy = enemyBody.plugin.entity;
+              const player = playerBody.plugin.entity as PlayerEntity;
               
               // Dying enemies don't attack
               if (enemy && enemy.dying) return;
+              if (player && player.isDead) return;
 
               const now = Date.now();
-              if (now - (refs.player.current.lastDamageTime || 0) > 500) {
-                   refs.player.current.lastDamageTime = now;
-                   refs.player.current.hp -= 5;
+              if (player && now - (player.lastDamageTime || 0) > 500) {
+                   player.lastDamageTime = now;
+                   player.hp -= 5;
                    refs.soundSystem.current?.playHit();
-                   if (refs.player.current.hp <= 0) {
-                       refs.soundSystem.current?.playGameOver(); // Safe Sound
-                       refs.callbacks.current.onGameOver(refs.score.current);
+                   if (player.hp <= 0) {
+                       player.isDead = true;
                    }
               }
           }
@@ -269,10 +279,12 @@ const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, damage: nu
                     }
                 }
             } else if (body.label === 'PLAYER') {
-                refs.player.current.hp -= damage / 10;
-                if (refs.player.current.hp <= 0) {
-                    refs.soundSystem.current?.playGameOver(); // Safe Sound
-                    refs.callbacks.current.onGameOver(refs.score.current);
+                const p = body.plugin.entity as PlayerEntity;
+                if (p && !p.isDead) {
+                    p.hp -= damage / 10;
+                    if (p.hp <= 0) {
+                       p.isDead = true;
+                    }
                 }
             } else if (body.label === 'OBSTACLE') {
                 const o = body.plugin.entity;
@@ -347,7 +359,7 @@ const triggerEnemyDeath = (refs: GameRefs, enemy: Entity) => {
     if (Math.random() < 0.05) refs.ammo.current[WeaponType.BARREL] += 5;
 };
 
-const resetGamePhysics = (refs: GameRefs) => {
+const resetGamePhysics = (refs: GameRefs, playerCount: number = 1) => {
     const World = Matter.World;
     const engine = refs.engine;
     if (!engine) return;
@@ -357,48 +369,71 @@ const resetGamePhysics = (refs: GameRefs) => {
         if (body.label !== 'WALL') World.remove(engine.world, body);
     });
 
-    // Reset Player Body
-    const startPos = { x: WORLD_WIDTH / 2, y: 150 };
+    // Reset Player Bodies
+    refs.players.current = [];
+    
     const playerRadius = 8;
-    const playerBody = Matter.Bodies.circle(startPos.x, startPos.y, playerRadius, {
-        label: 'PLAYER',
-        friction: 0,
-        frictionAir: 0.1, // Slightly higher air friction to stop fast
-        restitution: 0,
-        density: 100, // Very high density to make player heavy/immovable by zombies
-        inertia: Infinity,
-        collisionFilter: { category: CAT_PLAYER }
-    });
-    World.add(engine.world, playerBody);
+    const startPositions = playerCount === 1 
+        ? [{ x: WORLD_WIDTH / 2, y: 150 }]
+        : [{ x: WORLD_WIDTH / 2 - 40, y: 150 }, { x: WORLD_WIDTH / 2 + 40, y: 150 }];
 
-    // Reset Player Ref
-    refs.player.current = {
-      id: 0,
-      type: EntityType.PLAYER,
-      pos: startPos,
-      velocity: { x: 0, y: 0 },
-      rotation: 0,
-      radius: playerRadius,
-      hp: PLAYER_HP,
-      maxHp: PLAYER_HP,
-      color: COLORS.PLAYER_SKIN,
-      isDead: false,
-      lastAttackTime: 0,
-      lastDamageTime: 0,
-      body: playerBody
-    };
-    playerBody.plugin.entity = refs.player.current;
+    const colors = [COLORS.PLAYER_SKIN, '#3366FF']; // P1 Red, P2 Blue
 
+    for (let i = 0; i < playerCount; i++) {
+        const pos = startPositions[i];
+        const playerBody = Matter.Bodies.circle(pos.x, pos.y, playerRadius, {
+            label: 'PLAYER',
+            friction: 0,
+            frictionAir: 0.1, 
+            restitution: 0,
+            density: 100, 
+            inertia: Infinity,
+            collisionFilter: { category: CAT_PLAYER }
+        });
+        World.add(engine.world, playerBody);
+
+        const player: PlayerEntity = {
+            id: i + 1,
+            type: EntityType.PLAYER,
+            playerId: i + 1,
+            pos: pos,
+            velocity: { x: 0, y: 0 },
+            rotation: 0,
+            radius: playerRadius,
+            hp: PLAYER_HP,
+            maxHp: PLAYER_HP,
+            color: colors[i % colors.length],
+            isDead: false,
+            lastAttackTime: 0,
+            lastDamageTime: 0,
+            body: playerBody,
+            currentWeapon: WeaponType.PISTOL,
+            ammo: {
+                [WeaponType.PISTOL]: 10000,
+                [WeaponType.UZI]: 10000,
+                [WeaponType.SHOTGUN]: 10000,
+                [WeaponType.FAKE_WALL]: 10000,
+                [WeaponType.BARREL]: 10000,
+                [WeaponType.GRENADE]: -1
+            },
+            score: 0,
+            multiplier: 1
+        };
+        playerBody.plugin.entity = player;
+        refs.players.current.push(player);
+    }
+    
     // Generate Random Initial Obstacles (Walls & Barrels)
     const obstacles: Entity[] = [];
     const gridSize = 16;
     const spawnZone = 300; 
+    const startCenter = { x: WORLD_WIDTH / 2, y: 150 };
 
     for(let i = 0; i < 60; i++) {
         const rx = Math.floor(Math.random() * (WORLD_WIDTH / gridSize)) * gridSize;
         const ry = Math.floor(Math.random() * (WORLD_HEIGHT / gridSize)) * gridSize;
         
-        const dToSpawn = dist({x: rx, y: ry}, startPos);
+        const dToSpawn = dist({x: rx, y: ry}, startCenter);
         if (dToSpawn < spawnZone) continue;
 
         if (rx < 100 || rx > WORLD_WIDTH - 100 || ry < 100 || ry > WORLD_HEIGHT - 100) continue;

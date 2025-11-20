@@ -115,6 +115,11 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
         if (item.type === EntityType.ITEM_HEALTH) {
             ctx.save();
             ctx.translate(item.pos.x, item.pos.y);
+            
+            // Pulse Effect
+            const pulse = 1 + Math.sin(Date.now() * 0.01) * 0.1;
+            ctx.scale(pulse, pulse);
+            
             ctx.shadowColor = '#ffffff';
             ctx.shadowBlur = 5;
             
