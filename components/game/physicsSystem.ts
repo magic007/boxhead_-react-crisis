@@ -96,8 +96,8 @@ const initPhysics = (refs: GameRefs) => {
                   if (bullet.isGrenade) {
                       createExplosion(refs, bullet.pos, bullet.damage, 250);
                   } else if (bullet.isCannon) {
-                      // 大炮子弹爆炸，防止连锁反应
-                      createExplosion(refs, bullet.pos, bullet.damage, 80, true);
+                      // 大炮子弹爆炸，防止连锁反应，不伤害玩家
+                      createExplosion(refs, bullet.pos, bullet.damage, 80, true, true);
                   } else {
                       enemy.hp -= bullet.damage;
                       enemy.lastHitTime = Date.now(); // Stun logic
@@ -140,8 +140,8 @@ const initPhysics = (refs: GameRefs) => {
                        createExplosion(refs, bullet.pos, bullet.damage, 250);
                        bullet.active = false;
                   } else if (bullet.isCannon) {
-                      // 大炮子弹爆炸，防止连锁反应
-                      createExplosion(refs, bullet.pos, bullet.damage, 80, true);
+                      // 大炮子弹爆炸，防止连锁反应，不伤害玩家
+                      createExplosion(refs, bullet.pos, bullet.damage, 80, true, true);
                       bullet.active = false;
                    } else if (obs.isExplosive) {
                        // Instant detonation for Barrels
@@ -167,8 +167,8 @@ const initPhysics = (refs: GameRefs) => {
                   if (bullet.isGrenade) {
                       createExplosion(refs, bullet.pos, bullet.damage, 250);
                   } else if (bullet.isCannon) {
-                      // 大炮子弹击中墙壁也爆炸，防止连锁反应
-                      createExplosion(refs, bullet.pos, bullet.damage, 80, true);
+                      // 大炮子弹击中墙壁也爆炸，防止连锁反应，不伤害玩家
+                      createExplosion(refs, bullet.pos, bullet.damage, 80, true, true);
                   }
               }
           }
@@ -253,7 +253,7 @@ const initPhysics = (refs: GameRefs) => {
   return engine;
 };
 
-const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, damage: number, range: number = 180, preventChainReaction: boolean = false) => {
+const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, damage: number, range: number = 180, preventChainReaction: boolean = false, skipPlayerDamage: boolean = false) => {
     refs.soundSystem.current?.playExplosion(); // Safe Sound
     spawnParticles(refs, pos, 40, '#FF4500', 10, false);
     spawnParticles(refs, pos, 20, '#555555', 8, false);
@@ -291,11 +291,14 @@ const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, damage: nu
                     }
                 }
             } else if (body.label === 'PLAYER') {
-                const p = body.plugin.entity as PlayerEntity;
-                if (p && !p.isDead) {
-                    p.hp -= damage / 10;
-                    if (p.hp <= 0) {
-                       p.isDead = true;
+                // 大炮爆炸不伤害玩家
+                if (!skipPlayerDamage) {
+                    const p = body.plugin.entity as PlayerEntity;
+                    if (p && !p.isDead) {
+                        p.hp -= damage / 10;
+                        if (p.hp <= 0) {
+                           p.isDead = true;
+                        }
                     }
                 }
             } else if (body.label === 'OBSTACLE') {

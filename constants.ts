@@ -105,7 +105,7 @@ export const WEAPONS: Record<WeaponType, WeaponConfig> = {
   [WeaponType.CANNON]: {
     type: WeaponType.CANNON,
     damage: 150, // 高伤害
-    fireRate: 1500, // 低射速（1.5秒）
+    fireRate: 800, // 射速（0.8秒）
     speed: 18, // 中等速度
     spread: 0.02, // 低散射
     count: 1, // 单发

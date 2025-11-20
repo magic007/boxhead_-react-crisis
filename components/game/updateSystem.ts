@@ -161,8 +161,12 @@ export const updateGame = (refs: GameRefs, time: number) => {
     // More players = more enemies?
     const difficulty = refs.difficultyLevel.current;
     const playerCount = Math.max(1, activePlayers.length);
-    const maxEnemies = (30 + (refs.wave.current * 4) + (difficulty * 3)) * (1 + (playerCount - 1) * 0.5);
-    const spawnRate = 0.05 * Math.pow(1.1, difficulty) * (1 + (playerCount - 1) * 0.5); 
+    // 限制最大敌人数量，避免后期过多
+    const baseMaxEnemies = 30 + (refs.wave.current * 3) + (difficulty * 2);
+    const maxEnemies = Math.min(80, baseMaxEnemies) * (1 + (playerCount - 1) * 0.5);
+    // 降低生成率，使用更温和的增长曲线
+    const baseSpawnRate = 0.03 * (1 + difficulty * 0.05); // 线性增长而非指数
+    const spawnRate = Math.min(0.08, baseSpawnRate) * (1 + (playerCount - 1) * 0.5); 
 
     if (refs.enemies.current.length < maxEnemies) {
       if (Math.random() < spawnRate) {
@@ -393,12 +397,33 @@ const spawnEnemy = (refs: GameRefs, player: Entity) => {
     const devilChance = Math.min(0.4, baseChance + waveChance);
     
     const isDevil = Math.random() < devilChance;
-    const spawnAngle = Math.random() * Math.PI * 2;
-    const spawnDist = 800;
-    let spawnX = player.pos.x + Math.cos(spawnAngle) * spawnDist;
-    let spawnY = player.pos.y + Math.sin(spawnAngle) * spawnDist;
-    spawnX = Math.max(60, Math.min(WORLD_WIDTH - 60, spawnX));
-    spawnY = Math.max(60, Math.min(WORLD_HEIGHT - 60, spawnY));
+    
+    // 只在地图边缘生成怪物
+    const edge = Math.floor(Math.random() * 4); // 0=上, 1=右, 2=下, 3=左
+    const margin = 60; // 边缘边距
+    let spawnX: number, spawnY: number;
+    
+    switch(edge) {
+        case 0: // 上边缘
+            spawnX = margin + Math.random() * (WORLD_WIDTH - margin * 2);
+            spawnY = margin;
+            break;
+        case 1: // 右边缘
+            spawnX = WORLD_WIDTH - margin;
+            spawnY = margin + Math.random() * (WORLD_HEIGHT - margin * 2);
+            break;
+        case 2: // 下边缘
+            spawnX = margin + Math.random() * (WORLD_WIDTH - margin * 2);
+            spawnY = WORLD_HEIGHT - margin;
+            break;
+        case 3: // 左边缘
+            spawnX = margin;
+            spawnY = margin + Math.random() * (WORLD_HEIGHT - margin * 2);
+            break;
+        default:
+            spawnX = margin;
+            spawnY = margin;
+    }
 
     const radius = 9;
     const body = Matter.Bodies.circle(spawnX, spawnY, radius, {
