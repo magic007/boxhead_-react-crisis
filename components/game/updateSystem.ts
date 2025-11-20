@@ -160,8 +160,8 @@ export const updateGame = (refs: GameRefs, time: number) => {
     // More players = more enemies?
     const difficulty = refs.difficultyLevel.current;
     const playerCount = Math.max(1, activePlayers.length);
-    const maxEnemies = (60 + (refs.wave.current * 8) + (difficulty * 5)) * (1 + (playerCount - 1) * 0.5);
-    const spawnRate = 0.15 * Math.pow(1.1, difficulty) * (1 + (playerCount - 1) * 0.5); 
+    const maxEnemies = (30 + (refs.wave.current * 4) + (difficulty * 3)) * (1 + (playerCount - 1) * 0.5);
+    const spawnRate = 0.05 * Math.pow(1.1, difficulty) * (1 + (playerCount - 1) * 0.5); 
 
     if (refs.enemies.current.length < maxEnemies) {
       if (Math.random() < spawnRate) {
