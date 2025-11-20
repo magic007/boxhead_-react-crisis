@@ -95,6 +95,9 @@ const initPhysics = (refs: GameRefs) => {
                   bullet.active = false;
                   if (bullet.isGrenade) {
                       createExplosion(refs, bullet.pos, bullet.damage, 250);
+                  } else if (bullet.isCannon) {
+                      // 大炮子弹爆炸，防止连锁反应
+                      createExplosion(refs, bullet.pos, bullet.damage, 80, true);
                   } else {
                       enemy.hp -= bullet.damage;
                       enemy.lastHitTime = Date.now(); // Stun logic
@@ -136,6 +139,10 @@ const initPhysics = (refs: GameRefs) => {
                    if (bullet.isGrenade) {
                        createExplosion(refs, bullet.pos, bullet.damage, 250);
                        bullet.active = false;
+                  } else if (bullet.isCannon) {
+                      // 大炮子弹爆炸，防止连锁反应
+                      createExplosion(refs, bullet.pos, bullet.damage, 80, true);
+                      bullet.active = false;
                    } else if (obs.isExplosive) {
                        // Instant detonation for Barrels
                        obs.hp = 0;
@@ -157,7 +164,12 @@ const initPhysics = (refs: GameRefs) => {
               // Hit Wall
               else if (otherBody.label === 'WALL') {
                   bullet.active = false;
-                  if (bullet.isGrenade) createExplosion(refs, bullet.pos, bullet.damage, 250);
+                  if (bullet.isGrenade) {
+                      createExplosion(refs, bullet.pos, bullet.damage, 250);
+                  } else if (bullet.isCannon) {
+                      // 大炮子弹击中墙壁也爆炸，防止连锁反应
+                      createExplosion(refs, bullet.pos, bullet.damage, 80, true);
+                  }
               }
           }
           
@@ -241,7 +253,7 @@ const initPhysics = (refs: GameRefs) => {
   return engine;
 };
 
-const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, damage: number, range: number = 180) => {
+const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, damage: number, range: number = 180, preventChainReaction: boolean = false) => {
     refs.soundSystem.current?.playExplosion(); // Safe Sound
     spawnParticles(refs, pos, 40, '#FF4500', 10, false);
     spawnParticles(refs, pos, 20, '#555555', 8, false);
@@ -288,7 +300,18 @@ const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, damage: nu
                 }
             } else if (body.label === 'OBSTACLE') {
                 const o = body.plugin.entity;
-                if(o && !o.isDead) o.hp -= damage;
+                if(o && !o.isDead) {
+                    o.hp -= damage;
+                    // 如果防止连锁反应且障碍物是油桶，直接移除而不触发爆炸
+                    if (preventChainReaction && o.isExplosive && o.hp <= 0) {
+                        o.isDead = true;
+                        if (o.body) {
+                            Matter.World.remove(refs.engine.world, o.body);
+                        }
+                        // 只生成粒子效果，不触发爆炸
+                        spawnParticles(refs, o.pos, 10, '#AA0000', 3, false);
+                    }
+                }
             }
         }
     });
@@ -417,7 +440,8 @@ const resetGamePhysics = (refs: GameRefs, playerCount: number = 1) => {
                 [WeaponType.SHOTGUN]: 10000,
                 [WeaponType.FAKE_WALL]: 10000,
                 [WeaponType.BARREL]: 10000,
-                [WeaponType.GRENADE]: -1
+                [WeaponType.GRENADE]: -1,
+                [WeaponType.CANNON]: 10000
             },
             score: 0,
             multiplier: 1

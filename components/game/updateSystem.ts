@@ -51,6 +51,7 @@ export const updateGame = (refs: GameRefs, time: number) => {
         if (refs.keys.current.has(map[Action.WEAPON_SHOTGUN])) player.currentWeapon = WeaponType.SHOTGUN;
         if (refs.keys.current.has(map[Action.WEAPON_WALL])) player.currentWeapon = WeaponType.FAKE_WALL;
         if (refs.keys.current.has(map[Action.WEAPON_BARREL])) player.currentWeapon = WeaponType.BARREL;
+        if (refs.keys.current.has(map[Action.WEAPON_CANNON])) player.currentWeapon = WeaponType.CANNON;
 
         // 1. Player Movement
         let moveX = 0;
@@ -89,7 +90,7 @@ export const updateGame = (refs: GameRefs, time: number) => {
         }
         
         // Auto-Aim Override (for gun weapons)
-        if ([WeaponType.PISTOL, WeaponType.UZI, WeaponType.SHOTGUN].includes(player.currentWeapon)) {
+        if ([WeaponType.PISTOL, WeaponType.UZI, WeaponType.SHOTGUN, WeaponType.CANNON].includes(player.currentWeapon)) {
           let nearestEnemy: Entity | null = null;
           let minDst = Infinity;
           const AUTO_AIM_RANGE = 600;
@@ -318,11 +319,14 @@ const handleShooting = (refs: GameRefs, weapon: any, player: PlayerEntity) => {
     refs.soundSystem.current?.playShoot(weapon.type); 
     if (weapon.ammo !== -1) player.ammo[weapon.type] = Math.max(0, player.ammo[weapon.type] - 1);
     
+    // 大炮子弹更大
+    const bulletRadius = weapon.type === WeaponType.CANNON ? 6 : 3;
+    
     for (let i = 0; i < weapon.count; i++) {
       const spread = (Math.random() - 0.5) * weapon.spread;
       const angle = player.rotation + spread;
       
-      const bBody = Matter.Bodies.circle(player.pos.x + Math.cos(angle)*25, player.pos.y + Math.sin(angle)*25, 3, {
+      const bBody = Matter.Bodies.circle(player.pos.x + Math.cos(angle)*25, player.pos.y + Math.sin(angle)*25, bulletRadius, {
           label: 'BULLET',
           frictionAir: 0,
           isSensor: true, 
@@ -342,6 +346,7 @@ const handleShooting = (refs: GameRefs, weapon: any, player: PlayerEntity) => {
         damage: weapon.damage,
         active: true,
         color: weapon.color,
+        isCannon: weapon.type === WeaponType.CANNON,
         body: bBody
       };
       bBody.plugin.entity = bullet;

@@ -101,6 +101,16 @@ export const WEAPONS: Record<WeaponType, WeaponConfig> = {
     count: 1,
     ammo: -1, // -1 可能表示特殊逻辑或不可用
     color: '#00FF00'
+  },
+  [WeaponType.CANNON]: {
+    type: WeaponType.CANNON,
+    damage: 150, // 高伤害
+    fireRate: 1500, // 低射速（1.5秒）
+    speed: 18, // 中等速度
+    spread: 0.02, // 低散射
+    count: 1, // 单发
+    ammo: 10000, // 无限弹药
+    color: '#FF4500' // 橙红色
   }
 };
 

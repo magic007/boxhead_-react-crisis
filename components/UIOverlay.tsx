@@ -40,6 +40,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, p1Stats, p2Sta
       case WeaponType.SHOTGUN: return '霰弹枪';
       case WeaponType.FAKE_WALL: return '假墙';
       case WeaponType.BARREL: return '油桶';
+      case WeaponType.CANNON: return '大炮';
       default: return type;
     }
   };
@@ -103,6 +104,9 @@ const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, p1Stats, p2Sta
          </div>
          <div className={`bg-gray-900/80 px-2 py-1 text-xs border ${p1Stats.weapon === WeaponType.BARREL ? 'border-yellow-400 text-yellow-400' : 'border-gray-500 text-gray-500'}`}>
            [{getKeyLabel(Action.WEAPON_BARREL)}] 油桶
+         </div>
+         <div className={`bg-gray-900/80 px-2 py-1 text-xs border ${p1Stats.weapon === WeaponType.CANNON ? 'border-yellow-400 text-yellow-400' : 'border-gray-500 text-gray-500'}`}>
+           [{getKeyLabel(Action.WEAPON_CANNON)}] 大炮
          </div>
          <div className="bg-red-900/80 px-2 py-1 text-xs border border-red-500 text-red-200 ml-4">
            [{getKeyLabel(Action.SHOOT)}] 攻击
