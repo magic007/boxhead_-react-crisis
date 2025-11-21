@@ -3,7 +3,7 @@ import GameCanvas from './components/GameCanvas';
 import UIOverlay from './components/UIOverlay';
 import { KeybindingModal } from './components/KeybindingModal';
 import { VirtualControls } from './components/VirtualControls';
-import { GameState, WeaponType } from './types';
+import { GameState, WeaponType, Difficulty } from './types';
 import { Action, getSavedKeyMap } from './components/game/inputConfig';
 
 export default function App() {
@@ -14,23 +14,37 @@ export default function App() {
   const [multiplier, setMultiplier] = useState(1);
   const [isMobile, setIsMobile] = useState(false);
   const [showVirtualControls, setShowVirtualControls] = useState(true);
+  const [livesPerPlayer, setLivesPerPlayer] = useState(3);
+  
+  // 难度设置，从 localStorage 读取，默认中等
+  const [difficulty, setDifficulty] = useState<Difficulty>(() => {
+    const saved = localStorage.getItem('gameDifficulty');
+    if (saved && Object.values(Difficulty).includes(saved as Difficulty)) {
+      return saved as Difficulty;
+    }
+    return Difficulty.MEDIUM;
+  });
+  
+  // 保存难度设置到 localStorage
+  const handleDifficultyChange = useCallback((newDifficulty: Difficulty) => {
+    setDifficulty(newDifficulty);
+    localStorage.setItem('gameDifficulty', newDifficulty);
+  }, []);
   
   // Player 1 Stats
   const [p1Stats, setP1Stats] = useState({
       hp: 100,
       weapon: WeaponType.PISTOL,
-      ammo: -1
+      ammo: -1,
+      lives: 3
   });
   
   // Player 2 Stats (Optional)
-  const [p2Stats, setP2Stats] = useState<{hp: number, weapon: string, ammo: number} | null>(null);
+  const [p2Stats, setP2Stats] = useState<{hp: number, weapon: string, ammo: number, lives: number} | null>(null);
   
   const [finalScore, setFinalScore] = useState(0);
 
   useEffect(() => {
-    // Prevent double alert in strict mode
-    if (window.hasShownMobileAlert) return;
-
     const checkMobile = () => {
       const ua = navigator.userAgent;
       const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
@@ -41,10 +55,6 @@ export default function App() {
     
     const mobile = checkMobile();
     setIsMobile(mobile);
-    if (mobile) {
-      window.hasShownMobileAlert = true;
-      alert('检测到您正在使用移动设备。\n\n系统已为您启用虚拟按键操作：\n- 左侧：移动摇杆\n- 右侧：攻击与切换武器\n- 空白处：触摸瞄准');
-    }
   }, []);
 
   const requestFullScreen = useCallback(() => {
@@ -62,17 +72,13 @@ export default function App() {
   }, []);
 
   const handleStart = useCallback((count: number) => {
-    if (isMobile) {
-      requestFullScreen();
-    }
-
     setPlayerCount(count);
     setScore(0);
     setMultiplier(1);
-    setP1Stats({ hp: 100, weapon: WeaponType.PISTOL, ammo: -1 });
-    setP2Stats(count === 2 ? { hp: 100, weapon: WeaponType.PISTOL, ammo: -1 } : null);
+    setP1Stats({ hp: 100, weapon: WeaponType.PISTOL, ammo: -1, lives: livesPerPlayer });
+    setP2Stats(count === 2 ? { hp: 100, weapon: WeaponType.PISTOL, ammo: -1, lives: livesPerPlayer } : null);
     setGameState(GameState.PLAYING);
-  }, [isMobile, requestFullScreen]);
+  }, [livesPerPlayer]);
 
   const handleGameOver = useCallback((final: number) => {
     setFinalScore(final);
@@ -84,10 +90,10 @@ export default function App() {
     setMultiplier(m);
   }, []);
 
-  const handleHealthUpdate = useCallback((hps: number[]) => {
-    setP1Stats(prev => ({ ...prev, hp: hps[0] }));
-    if (hps[1] !== undefined) {
-        setP2Stats(prev => prev ? ({ ...prev, hp: hps[1] }) : null);
+  const handleHealthUpdate = useCallback((hps: number[], lives: number[]) => {
+    setP1Stats(prev => ({ ...prev, hp: hps[0], lives: lives[0] }));
+    if (hps[1] !== undefined && lives[1] !== undefined) {
+        setP2Stats(prev => prev ? ({ ...prev, hp: hps[1], lives: lives[1] }) : null);
     }
   }, []);
 
@@ -121,6 +127,8 @@ export default function App() {
         <GameCanvas 
           gameState={gameState}
           playerCount={playerCount}
+          livesPerPlayer={livesPerPlayer}
+          difficulty={difficulty}
           onScoreUpdate={handleScoreUpdate}
           onHealthUpdate={handleHealthUpdate}
           onAmmoUpdate={handleAmmoUpdate}
@@ -147,17 +155,6 @@ export default function App() {
             <h1 className="text-6xl font-bold mb-2 text-red-600 tracking-tighter">僵尸危机 3</h1>
             <h2 className="text-2xl mb-8 text-gray-300">BOXHEAD: ZOMBIE WARS</h2>
             
-            {isMobile && (
-               <button 
-                 onClick={requestFullScreen}
-                 className="absolute top-4 right-4 p-3 bg-gray-800/50 border border-white/20 rounded-full text-white active:scale-95 transition-all"
-               >
-                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-                </svg>
-               </button>
-            )}
-
             <div className="space-y-4 text-center flex flex-col items-center">
               <button 
                 onClick={() => handleStart(1)}
@@ -220,6 +217,11 @@ export default function App() {
           showVirtualControls={showVirtualControls}
           onToggleVirtualControls={() => setShowVirtualControls(prev => !prev)}
           isMobile={isMobile}
+          onRequestFullScreen={requestFullScreen}
+          livesPerPlayer={livesPerPlayer}
+          onLivesChange={setLivesPerPlayer}
+          difficulty={difficulty}
+          onDifficultyChange={handleDifficultyChange}
         />
 
         {/* Game Over Screen */}

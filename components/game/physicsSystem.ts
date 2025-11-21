@@ -388,7 +388,7 @@ const triggerEnemyDeath = (refs: GameRefs, enemy: Entity) => {
     });
 };
 
-const resetGamePhysics = (refs: GameRefs, playerCount: number = 1) => {
+const resetGamePhysics = (refs: GameRefs, playerCount: number = 1, livesPerPlayer: number = 3) => {
     const World = Matter.World;
     const engine = refs.engine;
     if (!engine) return;
@@ -447,7 +447,8 @@ const resetGamePhysics = (refs: GameRefs, playerCount: number = 1) => {
                 [WeaponType.CANNON]: 10000
             },
             score: 0,
-            multiplier: 1
+            multiplier: 1,
+            lives: livesPerPlayer
         };
         playerBody.plugin.entity = player;
         refs.players.current.push(player);

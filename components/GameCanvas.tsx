@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 // @ts-ignore
 import Matter from 'matter-js';
-import { GameState, Entity, PlayerEntity, Vector2, Bullet, Particle, WeaponType, Wall } from '../types';
+import { GameState, Entity, PlayerEntity, Vector2, Bullet, Particle, WeaponType, Wall, Difficulty } from '../types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../constants';
 import { GameRefs } from './game/types';
 import { generateMapWalls } from './game/mapSystem';
@@ -19,6 +19,8 @@ interface GameCanvasProps {
   onGameOver: (score: number) => void;
   gameState: GameState;
   playerCount: number;
+  livesPerPlayer: number;
+  difficulty: Difficulty;
 }
 
 const GameCanvas: React.FC<GameCanvasProps> = ({ 
@@ -27,7 +29,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   onAmmoUpdate, 
   onGameOver,
   gameState,
-  playerCount
+  playerCount,
+  livesPerPlayer,
+  difficulty
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -65,6 +69,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     wave: useRef(1),
     frame: useRef(0),
     difficultyLevel: useRef(0),
+    difficulty: useRef<Difficulty>(difficulty),
     gameMessage: useRef<string | null>(null),
     gameMessageTimer: useRef(0),
     mapWalls: useRef<Wall[]>(generateMapWalls()),
@@ -84,6 +89,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     });
     return () => { unsub1(); };
   }, []);
+  
+  // 更新难度设置
+  useEffect(() => {
+    gameRefs.difficulty.current = difficulty;
+  }, [difficulty]);
 
   useEffect(() => {
     const engine = initPhysics(gameRefs);
@@ -112,14 +122,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     gameRefs.multiplier.current = 1;
     gameRefs.wave.current = 1;
     gameRefs.difficultyLevel.current = 0;
+    gameRefs.difficulty.current = difficulty;
     gameRefs.gameMessage.current = null;
     
-    resetGamePhysics(gameRefs, playerCount); // Pass playerCount to init players
+    resetGamePhysics(gameRefs, playerCount, livesPerPlayer); // Pass playerCount and livesPerPlayer to init players
     gameRefs.camera.current = { x: 0, y: 0 }; 
     
     // Resume audio context on game start
     gameRefs.soundSystem.current?.resume();
-  }, [playerCount]);
+  }, [playerCount, livesPerPlayer, difficulty]);
 
   // Force reset when entering PLAYING state
   const prevGameState = useRef<GameState>(gameState);

@@ -2,7 +2,7 @@
 // @ts-ignore
 import Matter from 'matter-js';
 import { GameRefs } from './types';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_SPEED, ZOMBIE_SPEED, DEVIL_SPEED, WEAPONS, ZOMBIE_HP, DEVIL_HP, COLORS, DEVIL_FIRE_RATE, VIRUS_SPEED, VIRUS_DAMAGE, BARREL_EXPLOSION_RANGE, CAT_BULLET, CAT_PLAYER, CAT_ENEMY, CAT_OBSTACLE, CAT_ENEMY_BULLET, CAT_WALL, CAT_ITEM } from '../../constants';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_SPEED, ZOMBIE_SPEED, DEVIL_SPEED, WEAPONS, ZOMBIE_HP, DEVIL_HP, PLAYER_HP, COLORS, DEVIL_FIRE_RATE, VIRUS_SPEED, VIRUS_DAMAGE, BARREL_EXPLOSION_RANGE, CAT_BULLET, CAT_PLAYER, CAT_ENEMY, CAT_OBSTACLE, CAT_ENEMY_BULLET, CAT_WALL, CAT_ITEM, DIFFICULTY_CONFIG } from '../../constants';
 import { WeaponType, EntityType, Entity, Bullet, PlayerEntity } from '../../types';
 import { dist, spawnParticles } from './utils';
 import { createExplosion } from './physicsSystem';
@@ -10,10 +10,39 @@ import { Action } from './inputConfig';
 
 export const updateGame = (refs: GameRefs, time: number) => {
     const players = refs.players.current;
+    
+    // Handle lives system: revive players with remaining lives
+    players.forEach(player => {
+        if (player.isDead && player.lives > 0) {
+            // Player died but has lives remaining - revive them
+            player.lives--;
+            player.isDead = false;
+            player.hp = PLAYER_HP;
+            player.maxHp = PLAYER_HP;
+            
+            // Reset player position to spawn point
+            const startPositions = players.length === 1 
+                ? [{ x: WORLD_WIDTH / 2, y: 150 }]
+                : [{ x: WORLD_WIDTH / 2 - 40, y: 150 }, { x: WORLD_WIDTH / 2 + 40, y: 150 }];
+            const spawnPos = startPositions[player.playerId - 1] || { x: WORLD_WIDTH / 2, y: 150 };
+            
+            if (player.body) {
+                Matter.Body.setPosition(player.body, spawnPos);
+                Matter.Body.setVelocity(player.body, { x: 0, y: 0 });
+            }
+            player.pos = spawnPos;
+            
+            // Show message
+            refs.gameMessage.current = `P${player.playerId} REVIVED! (${player.lives} lives left)`;
+            refs.gameMessageTimer.current = 120;
+            refs.soundSystem.current?.playPickup();
+        }
+    });
+    
     const activePlayers = players.filter(p => !p.isDead);
     
     if (players.length > 0 && activePlayers.length === 0) {
-        // All players dead
+        // All players dead (no lives remaining)
         refs.callbacks.current.onGameOver(refs.score.current);
         return;
     }
@@ -159,14 +188,16 @@ export const updateGame = (refs: GameRefs, time: number) => {
     
     // 5. Enemy Spawning
     // More players = more enemies?
-    const difficulty = refs.difficultyLevel.current;
+    const dynamicDifficulty = refs.difficultyLevel.current; // 动态难度（基于分数）
+    const userDifficulty = refs.difficulty.current; // 用户选择的难度设置
+    const difficultyConfig = DIFFICULTY_CONFIG[userDifficulty];
     const playerCount = Math.max(1, activePlayers.length);
     // 限制最大敌人数量，避免后期过多
-    const baseMaxEnemies = 30 + (refs.wave.current * 3) + (difficulty * 2);
-    const maxEnemies = Math.min(80, baseMaxEnemies) * (1 + (playerCount - 1) * 0.5);
+    const baseMaxEnemies = 30 + (refs.wave.current * 3) + (dynamicDifficulty * 2);
+    const maxEnemies = Math.min(80, baseMaxEnemies) * (1 + (playerCount - 1) * 0.5) * difficultyConfig.maxEnemiesMultiplier;
     // 降低生成率，使用更温和的增长曲线
-    const baseSpawnRate = 0.03 * (1 + difficulty * 0.05); // 线性增长而非指数
-    const spawnRate = Math.min(0.08, baseSpawnRate) * (1 + (playerCount - 1) * 0.5); 
+    const baseSpawnRate = 0.03 * (1 + dynamicDifficulty * 0.05); // 线性增长而非指数
+    const spawnRate = Math.min(0.08, baseSpawnRate) * (1 + (playerCount - 1) * 0.5) * difficultyConfig.spawnRateMultiplier; 
 
     if (refs.enemies.current.length < maxEnemies) {
       if (Math.random() < spawnRate) {
@@ -222,7 +253,9 @@ export const updateGame = (refs: GameRefs, time: number) => {
       // Stun Check
       const isStunned = Date.now() - (enemy.lastHitTime || 0) < 300;
       if (!isStunned) {
-           const speed = enemy.type === EntityType.DEVIL ? DEVIL_SPEED : ZOMBIE_SPEED;
+           const baseSpeed = enemy.type === EntityType.DEVIL ? DEVIL_SPEED : ZOMBIE_SPEED;
+           const difficultyConfig = DIFFICULTY_CONFIG[refs.difficulty.current];
+           const speed = baseSpeed * difficultyConfig.speedMultiplier;
            Matter.Body.setVelocity(enemy.body, {
                x: Math.cos(angle) * speed,
                y: Math.sin(angle) * speed
@@ -244,7 +277,8 @@ export const updateGame = (refs: GameRefs, time: number) => {
       
       // Prepare data for UI
       const hps = players.map(p => p.hp);
-      refs.callbacks.current.onHealthUpdate(hps);
+      const lives = players.map(p => p.lives);
+      refs.callbacks.current.onHealthUpdate(hps, lives);
       
       const p1 = players[0];
       const p2 = players[1]; // undefined if single player
@@ -394,7 +428,9 @@ const spawnVirus = (refs: GameRefs, devil: Entity, target: Entity) => {
 const spawnEnemy = (refs: GameRefs, player: Entity) => {
     const baseChance = 0.1;
     const waveChance = refs.wave.current * 0.05;
-    const devilChance = Math.min(0.4, baseChance + waveChance);
+    const difficultyConfig = DIFFICULTY_CONFIG[refs.difficulty.current];
+    const baseDevilChance = Math.min(0.4, baseChance + waveChance);
+    const devilChance = baseDevilChance * difficultyConfig.devilChanceMultiplier;
     
     const isDevil = Math.random() < devilChance;
     
@@ -435,6 +471,8 @@ const spawnEnemy = (refs: GameRefs, player: Entity) => {
     });
     Matter.World.add(refs.engine.world, body);
     
+    const enemyHp = Math.round((isDevil ? DEVIL_HP : ZOMBIE_HP) * difficultyConfig.hpMultiplier);
+    
     const enemy: Entity = {
       id: Math.random(),
       type: isDevil ? EntityType.DEVIL : EntityType.ZOMBIE,
@@ -442,8 +480,8 @@ const spawnEnemy = (refs: GameRefs, player: Entity) => {
       velocity: { x: 0, y: 0 },
       rotation: 0,
       radius: radius,
-      hp: isDevil ? DEVIL_HP : ZOMBIE_HP,
-      maxHp: isDevil ? DEVIL_HP : ZOMBIE_HP,
+      hp: enemyHp,
+      maxHp: enemyHp,
       color: isDevil ? COLORS.DEVIL_SKIN : COLORS.ZOMBIE_SKIN,
       isDead: false,
       body: body

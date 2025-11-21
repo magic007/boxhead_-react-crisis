@@ -25,6 +25,12 @@ export enum WeaponType {
   CANNON = 'Cannon'       // 新增：大炮
 }
 
+export enum Difficulty {
+  EASY = 'easy',      // 简单
+  MEDIUM = 'medium',  // 中等
+  HARD = 'hard'       // 困难
+}
+
 export interface Vector2 {
   x: number;
   y: number;
@@ -67,6 +73,7 @@ export interface PlayerEntity extends Entity {
   ammo: Record<WeaponType, number>;
   score: number; // Individual score (reserved)
   multiplier: number;
+  lives: number; // Number of lives remaining
 }
 
 export interface Bullet {

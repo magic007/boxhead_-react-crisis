@@ -7,12 +7,62 @@ interface VirtualControlsProps {
 }
 
 export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon }) => {
+  const weaponSwitchRef = useRef<HTMLButtonElement>(null);
+
   // Prevent context menu on long press
   useEffect(() => {
     const handleContextMenu = (e: Event) => e.preventDefault();
     document.addEventListener('contextmenu', handleContextMenu);
     return () => document.removeEventListener('contextmenu', handleContextMenu);
   }, []);
+
+  // Add non-passive touch event listener for weapon switch button
+  useEffect(() => {
+    const button = weaponSwitchRef.current;
+    if (!button) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Determine next weapon key based on current weapon
+      let nextAction = Action.WEAPON_PISTOL;
+      
+      switch (currentWeapon) {
+        case WeaponType.PISTOL:
+          nextAction = Action.WEAPON_UZI;
+          break;
+        case WeaponType.UZI:
+          nextAction = Action.WEAPON_SHOTGUN;
+          break;
+        case WeaponType.SHOTGUN:
+          nextAction = Action.WEAPON_WALL;
+          break;
+        case WeaponType.FAKE_WALL:
+          nextAction = Action.WEAPON_BARREL;
+          break;
+        case WeaponType.BARREL:
+          nextAction = Action.WEAPON_PISTOL;
+          break;
+        default:
+          nextAction = Action.WEAPON_PISTOL;
+      }
+
+      const keyMap = getSavedKeyMap(1);
+      const code = keyMap[nextAction];
+
+      // Press and release quickly
+      window.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true }));
+      setTimeout(() => {
+        window.dispatchEvent(new KeyboardEvent('keyup', { code, bubbles: true }));
+      }, 100);
+    };
+
+    button.addEventListener('touchstart', handleTouchStart, { passive: false });
+    return () => {
+      button.removeEventListener('touchstart', handleTouchStart);
+    };
+  }, [currentWeapon]);
 
   const getKeyForAction = (action: Action) => {
     const keyMap = getSavedKeyMap(1);
@@ -37,7 +87,7 @@ export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon 
     simulateKey(code, 'keyup');
   };
 
-  const handleWeaponSwitch = (e: React.TouchEvent | React.MouseEvent) => {
+  const handleWeaponSwitch = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
@@ -146,8 +196,8 @@ export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon 
         <div className="flex flex-col items-end gap-4 mb-2">
           {/* Weapon Switch */}
           <button
+            ref={weaponSwitchRef}
             className={`${btnBaseClass} w-14 h-14 rounded-full bg-yellow-500/20 border-yellow-400/50 text-yellow-200`}
-            onTouchStart={handleWeaponSwitch}
             onMouseDown={handleWeaponSwitch}
           >
              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Action, KeyMap, getSavedKeyMap, saveKeyMap, DEFAULT_KEYMAP_P1, DEFAULT_KEYMAP_P2, ACTION_LABELS } from './game/inputConfig';
+import { Difficulty } from '../types';
 
 interface KeybindingModalProps {
   isOpen: boolean;
@@ -7,6 +8,11 @@ interface KeybindingModalProps {
   showVirtualControls: boolean;
   onToggleVirtualControls: () => void;
   isMobile: boolean;
+  onRequestFullScreen: () => void;
+  livesPerPlayer: number;
+  onLivesChange: (lives: number) => void;
+  difficulty: Difficulty;
+  onDifficultyChange: (difficulty: Difficulty) => void;
 }
 
 export const KeybindingModal: React.FC<KeybindingModalProps> = ({ 
@@ -14,18 +20,29 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
   onClose, 
   showVirtualControls, 
   onToggleVirtualControls,
-  isMobile 
+  isMobile,
+  onRequestFullScreen,
+  livesPerPlayer,
+  onLivesChange,
+  difficulty,
+  onDifficultyChange
 }) => {
+  const [selectedTab, setSelectedTab] = useState<'general' | 1 | 2>('general');
   const [selectedPlayer, setSelectedPlayer] = useState<number>(1);
   const [keyMap, setKeyMap] = useState<KeyMap>(getSavedKeyMap(1));
   const [listeningAction, setListeningAction] = useState<Action | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setKeyMap(getSavedKeyMap(selectedPlayer));
-      setListeningAction(null);
+      if (selectedTab === 'general') {
+        setListeningAction(null);
+      } else {
+        setSelectedPlayer(selectedTab);
+        setKeyMap(getSavedKeyMap(selectedTab));
+        setListeningAction(null);
+      }
     }
-  }, [isOpen, selectedPlayer]);
+  }, [isOpen, selectedTab]);
 
   useEffect(() => {
     if (!listeningAction) return;
@@ -53,13 +70,17 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
   };
 
   const handleSave = () => {
-    saveKeyMap(selectedPlayer, keyMap);
+    if (selectedTab !== 'general') {
+      saveKeyMap(selectedTab, keyMap);
+    }
     onClose();
   };
   
   const handleReset = () => {
-      setKeyMap(selectedPlayer === 1 ? DEFAULT_KEYMAP_P1 : DEFAULT_KEYMAP_P2);
+    if (selectedTab !== 'general') {
+      setKeyMap(selectedTab === 1 ? DEFAULT_KEYMAP_P1 : DEFAULT_KEYMAP_P2);
       setListeningAction(null);
+    }
   };
 
   if (!isOpen) return null;
@@ -69,61 +90,155 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
       <div className="bg-gray-900 border-2 border-gray-700 p-6 rounded-lg w-[500px] max-h-[80vh] overflow-y-auto shadow-2xl">
         <h2 className="text-2xl font-bold text-white mb-6 text-center uppercase tracking-wider">按键设置 (CONTROLS)</h2>
         
-        <div className="flex justify-center gap-4 mb-6">
-            <button 
-                onClick={() => setSelectedPlayer(1)}
-                className={`px-4 py-2 font-bold rounded ${selectedPlayer === 1 ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-400'}`}
-            >
-                玩家 1 (P1)
-            </button>
-            <button 
-                onClick={() => setSelectedPlayer(2)}
-                className={`px-4 py-2 font-bold rounded ${selectedPlayer === 2 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400'}`}
-            >
-                玩家 2 (P2)
-            </button>
+        {/* Tab Selection */}
+        <div className="flex justify-center gap-2 mb-6">
+          <button 
+            onClick={() => setSelectedTab('general')}
+            className={`px-4 py-2 font-bold rounded transition-colors ${
+              selectedTab === 'general' 
+                ? 'bg-gray-600 text-white' 
+                : 'bg-gray-700 text-gray-400 hover:bg-gray-650'
+            }`}
+          >
+            通用设置
+          </button>
+          <button 
+            onClick={() => setSelectedTab(1)}
+            className={`px-4 py-2 font-bold rounded transition-colors ${
+              selectedTab === 1 
+                ? 'bg-red-600 text-white' 
+                : 'bg-gray-700 text-gray-400 hover:bg-gray-650'
+            }`}
+          >
+            玩家 1 (P1)
+          </button>
+          <button 
+            onClick={() => setSelectedTab(2)}
+            className={`px-4 py-2 font-bold rounded transition-colors ${
+              selectedTab === 2 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-gray-700 text-gray-400 hover:bg-gray-650'
+            }`}
+          >
+            玩家 2 (P2)
+          </button>
         </div>
 
-        {isMobile && (
-          <div className="mb-6 p-3 bg-gray-800 rounded border border-gray-600 flex items-center justify-between">
-            <span className="text-white font-bold">虚拟按键 (Virtual Controls)</span>
-            <button
-              onClick={onToggleVirtualControls}
-              className={`px-4 py-2 rounded font-bold transition-colors ${
-                showVirtualControls ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-              }`}
-            >
-              {showVirtualControls ? '开启 (ON)' : '关闭 (OFF)'}
-            </button>
+        {/* General Settings Tab */}
+        {selectedTab === 'general' && (
+          <div className="mb-8 p-4 bg-gray-800 rounded-lg border border-gray-600">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-300 font-medium">游戏难度 (Difficulty)</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onDifficultyChange(Difficulty.EASY)}
+                    className={`px-4 py-2 rounded font-bold transition-colors ${
+                      difficulty === Difficulty.EASY
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    简单
+                  </button>
+                  <button
+                    onClick={() => onDifficultyChange(Difficulty.MEDIUM)}
+                    className={`px-4 py-2 rounded font-bold transition-colors ${
+                      difficulty === Difficulty.MEDIUM
+                        ? 'bg-yellow-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    中等
+                  </button>
+                  <button
+                    onClick={() => onDifficultyChange(Difficulty.HARD)}
+                    className={`px-4 py-2 rounded font-bold transition-colors ${
+                      difficulty === Difficulty.HARD
+                        ? 'bg-red-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    困难
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-300 font-medium">生命数量 (Lives Per Player)</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onLivesChange(Math.max(1, livesPerPlayer - 1))}
+                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded transition-colors"
+                  >
+                    -
+                  </button>
+                  <span className="text-white font-bold min-w-[2rem] text-center">{livesPerPlayer}</span>
+                  <button
+                    onClick={() => onLivesChange(Math.min(10, livesPerPlayer + 1))}
+                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded transition-colors"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              {isMobile && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300 font-medium">虚拟按键 (Virtual Controls)</span>
+                  <button
+                    onClick={onToggleVirtualControls}
+                    className={`px-4 py-2 rounded font-bold transition-colors ${
+                      showVirtualControls ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+                    }`}
+                  >
+                    {showVirtualControls ? '开启 (ON)' : '关闭 (OFF)'}
+                  </button>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-gray-300 font-medium">全屏模式 (Fullscreen)</span>
+                <button
+                  onClick={onRequestFullScreen}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded transition-colors"
+                >
+                  进入全屏
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
-        <div className="space-y-3 mb-8">
-          {Object.values(Action).map((action) => (
-            <div key={action} className="flex items-center justify-between bg-gray-800 p-3 rounded hover:bg-gray-750 transition-colors">
-              <span className="text-gray-300 font-medium">{ACTION_LABELS[action]}</span>
-              <button 
-                onClick={() => setListeningAction(action)}
-                className={`
-                  px-4 py-2 rounded font-mono font-bold min-w-[120px] text-center border-2 transition-all
-                  ${listeningAction === action 
-                    ? 'bg-yellow-500 text-black border-yellow-600 animate-pulse scale-105' 
-                    : 'bg-gray-700 text-white border-gray-600 hover:border-gray-500 hover:bg-gray-600'}
-                `}
-              >
-                {listeningAction === action ? '请按键...' : formatKey(keyMap[action] || '')}
-              </button>
-            </div>
-          ))}
-        </div>
+        {/* Player Settings Tab */}
+        {selectedTab !== 'general' && (
+          <div className="space-y-3 mb-8">
+            {Object.values(Action).map((action) => (
+              <div key={action} className="flex items-center justify-between bg-gray-800 p-3 rounded hover:bg-gray-750 transition-colors">
+                <span className="text-gray-300 font-medium">{ACTION_LABELS[action]}</span>
+                <button 
+                  onClick={() => setListeningAction(action)}
+                  className={`
+                    px-4 py-2 rounded font-mono font-bold min-w-[120px] text-center border-2 transition-all
+                    ${listeningAction === action 
+                      ? 'bg-yellow-500 text-black border-yellow-600 animate-pulse scale-105' 
+                      : 'bg-gray-700 text-white border-gray-600 hover:border-gray-500 hover:bg-gray-600'}
+                  `}
+                >
+                  {listeningAction === action ? '请按键...' : formatKey(keyMap[action] || '')}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="flex justify-between pt-4 border-t border-gray-700">
-           <button 
-            onClick={handleReset}
-            className="px-4 py-2 text-red-400 hover:text-red-300 font-medium text-sm"
-          >
-            恢复默认
-          </button>
+          {selectedTab !== 'general' && (
+            <button 
+              onClick={handleReset}
+              className="px-4 py-2 text-red-400 hover:text-red-300 font-medium text-sm"
+            >
+              恢复默认
+            </button>
+          )}
+          {selectedTab === 'general' && <div />}
           <div className="flex gap-3">
             <button 
               onClick={onClose}

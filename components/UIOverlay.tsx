@@ -6,6 +6,7 @@ interface PlayerStats {
     hp: number;
     weapon: string;
     ammo: number;
+    lives: number;
 }
 
 interface UIOverlayProps {
@@ -56,6 +57,9 @@ const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, p1Stats, p2Sta
               />
             </div>
             <div className="mt-1">
+                <div className="text-sm text-yellow-300 font-bold mb-1">
+                  生命: {stats.lives} ❤️
+                </div>
                 <div className="text-lg font-bold">{getWeaponName(stats.weapon)}</div>
                 <div className="text-2xl font-mono">{stats.ammo === -1 ? '∞' : stats.ammo}</div>
             </div>

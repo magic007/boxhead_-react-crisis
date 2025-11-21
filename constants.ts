@@ -1,5 +1,5 @@
 
-import { WeaponType, WeaponConfig } from './types';
+import { WeaponType, WeaponConfig, Difficulty } from './types';
 
 // Canvas 尺寸
 export const CANVAS_WIDTH = 800;
@@ -129,4 +129,39 @@ export const COLORS = {
   DEVIL_SKIN: '#aa0000', // 恶魔皮肤颜色
   OBSTACLE_WALL: '#666666', // 障碍墙颜色
   OBSTACLE_BARREL: '#cc3300' // 油桶颜色
+};
+
+// 难度配置
+export const DIFFICULTY_CONFIG: Record<Difficulty, {
+  multiplier: number;        // 总体难度倍数
+  spawnRateMultiplier: number; // 生成率倍数
+  maxEnemiesMultiplier: number; // 最大敌人数量倍数
+  speedMultiplier: number;   // 速度倍数
+  hpMultiplier: number;      // 血量倍数
+  devilChanceMultiplier: number; // 恶魔生成概率倍数
+}> = {
+  [Difficulty.EASY]: {
+    multiplier: 0.7,        // 降低30%
+    spawnRateMultiplier: 0.65,  // 生成率降低35%
+    maxEnemiesMultiplier: 0.7,  // 最大敌人数量降低30%
+    speedMultiplier: 0.7,   // 速度降低30%
+    hpMultiplier: 0.65,     // 血量降低35%
+    devilChanceMultiplier: 0.6  // 恶魔生成概率降低40%
+  },
+  [Difficulty.MEDIUM]: {
+    multiplier: 1.0,        // 基准值
+    spawnRateMultiplier: 1.0,
+    maxEnemiesMultiplier: 1.0,
+    speedMultiplier: 1.0,
+    hpMultiplier: 1.0,
+    devilChanceMultiplier: 1.0
+  },
+  [Difficulty.HARD]: {
+    multiplier: 1.35,       // 提高35%
+    spawnRateMultiplier: 1.4,  // 生成率提高40%
+    maxEnemiesMultiplier: 1.35, // 最大敌人数量提高35%
+    speedMultiplier: 1.35,  // 速度提高35%
+    hpMultiplier: 1.4,      // 血量提高40%
+    devilChanceMultiplier: 1.5  // 恶魔生成概率提高50%
+  }
 };
