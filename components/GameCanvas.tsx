@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 // @ts-ignore
 import Matter from 'matter-js';
 import { GameState, Entity, PlayerEntity, Vector2, Bullet, Particle, WeaponType, Wall, Difficulty } from '../types';
@@ -10,12 +10,12 @@ import { initPhysics, resetGamePhysics } from './game/physicsSystem';
 import { updateGame } from './game/updateSystem';
 import { renderGame } from './game/renderSystem';
 import { SoundSystem } from './game/soundSystem';
-import { getSavedKeyMap, Action, KeyMap, subscribeToKeyMapChange } from './game/inputConfig';
+import { getSavedKeyMap, Action, KeyMap, subscribeToKeyMapChange, getSavedGamepadMapping, subscribeToGamepadMappingChange } from './game/inputConfig';
 
 interface GameCanvasProps {
   onScoreUpdate: (score: number, multiplier: number) => void;
   onHealthUpdate: (hp: number[]) => void;
-  onAmmoUpdate: (p1: {weapon: string, ammo: number}, p2?: {weapon: string, ammo: number}) => void;
+  onAmmoUpdate: (p1: {weapon: string, ammo: number}, p2?: {weapon: string, ammo: number}, p3?: {weapon: string, ammo: number}) => void;
   onGameOver: (score: number) => void;
   gameState: GameState;
   playerCount: number;
@@ -34,6 +34,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   difficulty
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   
   // Lazy init SoundSystem to avoid creating AudioContext on every render
   const soundSystemRef = useRef<SoundSystem | null>(null);
@@ -59,25 +60,49 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     keys: useRef<Set<string>>(new Set()),
     keyMaps: useRef<Record<number, KeyMap>>({
         1: getSavedKeyMap(1),
-        2: getSavedKeyMap(2)
+        2: getSavedKeyMap(2),
+        3: getSavedKeyMap(3)
     }),
     mouse: useRef<Vector2>({ x: 0, y: 0 }),
     isMouseDown: useRef(false),
     gamepads: useRef<Array<Gamepad | null>>([]),
     gamepadButtons: useRef<Array<Set<number>>>([]),
+    gamepadToPlayer: useRef<Record<number, number>>(getSavedGamepadMapping()),
     score: useRef(0),
     multiplier: useRef(1),
     lastKillTime: useRef(0),
     wave: useRef(1),
+    waveEnemiesRemaining: useRef(0),
+    waveEnemiesTotal: useRef(0),
+    isSpawningWave: useRef(false),
+    waveCountdown: useRef(0),
+    safeHouse: useRef<{ x: number; y: number; width: number; height: number } | null>(null),
+    safeHouseDropped: useRef(false),
     frame: useRef(0),
     difficultyLevel: useRef(0),
     difficulty: useRef<Difficulty>(difficulty),
     gameMessage: useRef<string | null>(null),
     gameMessageTimer: useRef(0),
     mapWalls: useRef<Wall[]>(generateMapWalls()),
+    canvasWidth: window.innerWidth,
+    canvasHeight: window.innerHeight,
     soundSystem: soundSystemRef as React.MutableRefObject<SoundSystem>,
     callbacks: callbacksRef
   };
+  
+  // 监听窗口大小变化
+  useEffect(() => {
+    const handleResize = () => {
+      const newSize = { width: window.innerWidth, height: window.innerHeight };
+      setCanvasSize(newSize);
+      // 更新gameRefs中的画布尺寸
+      gameRefs.canvasWidth = newSize.width;
+      gameRefs.canvasHeight = newSize.height;
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const engineRef = useRef<any>(null);
   Object.defineProperty(gameRefs, 'engine', {
@@ -89,7 +114,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     const unsub1 = subscribeToKeyMapChange((pid, newMap) => {
         gameRefs.keyMaps.current[pid] = newMap;
     });
-    return () => { unsub1(); };
+    const unsub2 = subscribeToGamepadMappingChange((mapping) => {
+        gameRefs.gamepadToPlayer.current = mapping;
+    });
+    return () => { 
+      unsub1(); 
+      unsub2();
+    };
   }, []);
   
   // 更新难度设置
@@ -123,6 +154,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     gameRefs.score.current = 0;
     gameRefs.multiplier.current = 1;
     gameRefs.wave.current = 1;
+    gameRefs.waveEnemiesRemaining.current = 0;
+    gameRefs.waveEnemiesTotal.current = 0;
+    gameRefs.isSpawningWave.current = false;
+    gameRefs.waveCountdown.current = 0;
+    gameRefs.safeHouse.current = null;
+    gameRefs.safeHouseDropped.current = false;
     gameRefs.difficultyLevel.current = 0;
     gameRefs.difficulty.current = difficulty;
     gameRefs.gameMessage.current = null;
@@ -206,9 +243,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       if (!canvasRef.current) return;
       const rect = canvasRef.current.getBoundingClientRect();
+      // 计算相对于画布实际尺寸的鼠标位置
+      const scaleX = canvasRef.current.width / rect.width;
+      const scaleY = canvasRef.current.height / rect.height;
       gameRefs.mouse.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY
       };
     };
     const handleMouseDown = () => {
@@ -226,9 +266,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
             const touch = e.touches[i];
             const target = touch.target as HTMLElement;
             if (!target.closest('button')) {
+                 // 计算相对于画布实际尺寸的触摸位置
+                 const scaleX = canvasRef.current.width / rect.width;
+                 const scaleY = canvasRef.current.height / rect.height;
                  gameRefs.mouse.current = {
-                    x: touch.clientX - rect.left,
-                    y: touch.clientY - rect.top
+                    x: (touch.clientX - rect.left) * scaleX,
+                    y: (touch.clientY - rect.top) * scaleY
                   };
                   break;
             }
@@ -293,9 +336,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   return (
     <canvas 
       ref={canvasRef} 
-      width={CANVAS_WIDTH} 
-      height={CANVAS_HEIGHT}
-      className="rounded-lg shadow-2xl shadow-black bg-black mx-auto"
+      width={canvasSize.width} 
+      height={canvasSize.height}
+      className="w-full h-full bg-black"
+      style={{ display: 'block' }}
     />
   );
 };

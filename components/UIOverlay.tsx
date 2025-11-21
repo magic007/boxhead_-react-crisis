@@ -14,9 +14,10 @@ interface UIOverlayProps {
   multiplier: number;
   p1Stats: PlayerStats;
   p2Stats: PlayerStats | null;
+  p3Stats: PlayerStats | null;
 }
 
-const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, p1Stats, p2Stats }) => {
+const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, p1Stats, p2Stats, p3Stats }) => {
   // Only showing P1 keys for now as P2 keymap is static/default or managed elsewhere
   const [keyMapP1, setKeyMapP1] = useState<KeyMap>(getSavedKeyMap(1));
 
@@ -25,6 +26,40 @@ const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, p1Stats, p2Sta
         if (pid === 1) setKeyMapP1(newMap);
     });
   }, []);
+
+  // 连击动画样式
+  const comboStyles = `
+    @keyframes comboPulse {
+      0%, 100% { 
+        transform: scale(1);
+        color: #ff6b6b;
+      }
+      50% { 
+        transform: scale(1.2);
+        color: #ff4757;
+      }
+    }
+    @keyframes comboGlow {
+      0%, 100% { 
+        text-shadow: 0 0 15px rgba(255, 107, 107, 0.9), 
+                     0 0 25px rgba(255, 107, 107, 0.7), 
+                     0 0 35px rgba(255, 107, 107, 0.5),
+                     0 0 45px rgba(255, 71, 87, 0.3);
+      }
+      50% { 
+        text-shadow: 0 0 25px rgba(255, 71, 87, 1), 
+                     0 0 35px rgba(255, 71, 87, 0.9), 
+                     0 0 45px rgba(255, 71, 87, 0.7),
+                     0 0 55px rgba(255, 71, 87, 0.5);
+      }
+    }
+    .combo-text {
+      animation: comboPulse 0.5s ease-in-out infinite;
+    }
+    .combo-glow {
+      animation: comboGlow 1s ease-in-out infinite;
+    }
+  `;
 
   const getKeyLabel = (action: Action) => {
       const code = keyMapP1[action];
@@ -49,44 +84,42 @@ const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, p1Stats, p2Sta
   const renderPlayerStats = (stats: PlayerStats, label: string, alignRight: boolean = false) => {
       const isLowHealth = stats.hp <= 20;
       const isCriticalHealth = stats.hp <= 10;
+      // 从 label 中提取玩家编号（如 "P1 生命值" -> "P1"）
+      const playerNumber = label.split(' ')[0];
       
       return (
         <div className={`flex flex-col gap-0.5 md:gap-1.5 text-white ${alignRight ? 'items-end text-right' : 'items-start'}`}>
-            {/* 玩家标签 */}
-            <div className="font-bold text-[10px] md:text-lg drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] bg-black/20 px-1 md:px-2 py-0.5 rounded">
-              {label}
-            </div>
-            
-            {/* 血条 - 低血量时添加动画效果 */}
-            <div className={`w-16 md:w-48 h-3 md:h-6 bg-black/40 rounded shadow-lg transition-all ${
-              isCriticalHealth 
-                ? 'border border-red-500 md:border-2 animate-pulse shadow-red-500/50 shadow-2xl' 
-                : isLowHealth 
-                  ? 'border border-red-400/80 md:border-2 animate-pulse' 
-                  : 'border border-white/80 md:border-2'
-            }`}>
-              <div 
-                className={`h-full transition-all duration-200 ${
-                  stats.hp > 50 ? 'bg-green-500' : 
-                  stats.hp > 20 ? 'bg-yellow-500' : 
-                  'bg-red-600 animate-pulse'
-                }`} 
-                style={{ width: `${Math.max(0, stats.hp)}%` }}
-              />
-            </div>
-            
-            {/* 生命数量 - 低血量时突出显示 */}
-            <div className={`bg-black/30 px-1 md:px-2.5 py-0.5 md:py-1 rounded transition-all ${
-              isCriticalHealth 
-                ? 'border border-red-600 md:border-2 shadow-lg shadow-red-500/50 animate-pulse' 
-                : 'border border-red-500/80 md:border-2'
-            }`}>
-                <div className="text-[10px] md:text-sm text-white font-bold flex items-center gap-0.5 md:gap-1.5">
-                  <span className={`text-xs md:text-base ${isCriticalHealth ? 'animate-bounce' : ''}`}>❤️</span>
-                  <span className={`text-xs md:text-lg font-mono ${
-                    isCriticalHealth ? 'text-red-400 font-black' : 'text-red-300'
-                  }`}>{stats.lives}</span>
+            {/* 血条 - 低血量时添加动画效果，后面显示生命数量 */}
+            <div className={`flex items-center gap-1 md:gap-2 ${alignRight ? 'flex-row-reverse' : ''}`}>
+              <div className={`relative w-16 md:w-48 h-3 md:h-6 bg-black/40 rounded shadow-lg transition-all flex-shrink-0 ${
+                isCriticalHealth 
+                  ? 'border border-red-500 md:border-2 animate-pulse shadow-red-500/50 shadow-2xl' 
+                  : isLowHealth 
+                    ? 'border border-red-400/80 md:border-2 animate-pulse' 
+                    : 'border border-white/80 md:border-2'
+              }`}>
+                <div 
+                  className={`h-full transition-all duration-200 ${
+                    stats.hp > 50 ? 'bg-green-500' : 
+                    stats.hp > 20 ? 'bg-yellow-500' : 
+                    'bg-red-600 animate-pulse'
+                  }`} 
+                  style={{ width: `${Math.max(0, stats.hp)}%` }}
+                />
+                {/* 玩家编号显示在血条内部 - 左对齐 */}
+                <div className={`absolute inset-0 flex items-center ${alignRight ? 'justify-end' : 'justify-start'} text-[8px] md:text-sm font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] pointer-events-none px-1 md:px-2`}>
+                  {playerNumber}
                 </div>
+              </div>
+              
+              {/* 生命数量图标 - 放在血条后面 */}
+              <div className={`flex items-center gap-0.5 md:gap-1 ${isCriticalHealth ? 'animate-pulse' : ''}`}>
+                {Array.from({ length: stats.lives }).map((_, i) => (
+                  <span key={i} className={`text-xs md:text-base ${isCriticalHealth ? 'animate-bounce' : ''}`} style={{ animationDelay: `${i * 0.1}s` }}>
+                    ❤️
+                  </span>
+                ))}
+              </div>
             </div>
             
             {/* 武器和弹药信息 - 紧凑显示 */}
@@ -205,7 +238,9 @@ const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, p1Stats, p2Sta
   };
 
   return (
-    <div className="fixed top-6 md:top-4 left-0 right-0 flex justify-between px-1.5 md:px-8 pointer-events-none w-full max-w-[1200px] mx-auto z-50">
+    <>
+      <style>{comboStyles}</style>
+      <div className="fixed top-2 md:top-2 left-2 md:left-4 right-2 md:right-4 flex justify-between pointer-events-none z-50">
       {/* P1 Stats */}
       {renderPlayerStats(p1Stats, "P1 生命值")}
 
@@ -215,22 +250,24 @@ const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, p1Stats, p2Sta
           {score.toString().padStart(9, '0')}
         </div>
         {multiplier > 1 && (
-          <div className="text-yellow-400 text-xs md:text-2xl font-bold animate-pulse mt-0.5 md:mt-1">
-             x{multiplier} 连击!
+          <div className="combo-text text-xl md:text-5xl font-bold mt-0.5 md:mt-1 relative inline-block">
+            <span className="combo-glow">
+              x{multiplier} 连击!
+            </span>
           </div>
         )}
       </div>
 
-      {/* P2 Stats or Empty */}
-      {p2Stats ? (
-          renderPlayerStats(p2Stats, "P2 生命值", true)
-      ) : (
-          <div className="w-16 md:w-48" /> // Spacer
-      )}
+      {/* P2/P3 Stats or Empty */}
+      <div className="flex flex-col gap-2 items-end">
+        {p2Stats && renderPlayerStats(p2Stats, "P2 生命值", true)}
+        {p3Stats && renderPlayerStats(p3Stats, "P3 生命值", true)}
+        {!p2Stats && !p3Stats && <div className="w-16 md:w-48" />}
+      </div>
 
       {/* Bottom: Weapon Hints (Only P1 for now to save space) - Hidden on mobile */}
-      {!p2Stats && (
-      <div className="hidden md:flex absolute bottom-[-520px] left-1/2 -translate-x-1/2 gap-2 whitespace-nowrap">
+      {!p2Stats && !p3Stats && (
+      <div className="hidden md:flex fixed bottom-4 left-1/2 -translate-x-1/2 gap-2 whitespace-nowrap z-50">
          {[
            { type: WeaponType.PISTOL, action: Action.WEAPON_PISTOL, name: '手枪' },
            { type: WeaponType.UZI, action: Action.WEAPON_UZI, name: '冲锋枪' },
@@ -268,7 +305,8 @@ const UIOverlay: React.FC<UIOverlayProps> = ({ score, multiplier, p1Stats, p2Sta
          </div>
       </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 

@@ -2,7 +2,7 @@
 // @ts-ignore
 import Matter from 'matter-js';
 import { GameRefs } from './types';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_SPEED, ZOMBIE_SPEED, DEVIL_SPEED, WEAPONS, ZOMBIE_HP, DEVIL_HP, PLAYER_HP, COLORS, DEVIL_FIRE_RATE, VIRUS_SPEED, VIRUS_DAMAGE, BARREL_EXPLOSION_RANGE, CAT_BULLET, CAT_PLAYER, CAT_ENEMY, CAT_OBSTACLE, CAT_ENEMY_BULLET, CAT_WALL, CAT_ITEM, DIFFICULTY_CONFIG } from '../../constants';
+import { WORLD_WIDTH, WORLD_HEIGHT, PLAYER_SPEED, ZOMBIE_SPEED, DEVIL_SPEED, WEAPONS, ZOMBIE_HP, DEVIL_HP, PLAYER_HP, COLORS, DEVIL_FIRE_RATE, VIRUS_SPEED, VIRUS_DAMAGE, BARREL_EXPLOSION_RANGE, CAT_BULLET, CAT_PLAYER, CAT_ENEMY, CAT_OBSTACLE, CAT_ENEMY_BULLET, CAT_WALL, CAT_ITEM, DIFFICULTY_CONFIG } from '../../constants';
 import { WeaponType, EntityType, Entity, Bullet, PlayerEntity } from '../../types';
 import { dist, spawnParticles } from './utils';
 import { createExplosion } from './physicsSystem';
@@ -74,10 +74,18 @@ export const updateGame = (refs: GameRefs, time: number) => {
         const map = refs.keyMaps.current[player.playerId]; // Use playerId as key
         if (!map) return;
         
-        // Gamepad support: map gamepad index to player (gamepad 0 -> player 1, gamepad 1 -> player 2)
-        const gamepadIndex = player.playerId - 1;
-        const gamepad = refs.gamepads.current[gamepadIndex];
-        const gamepadButtons = refs.gamepadButtons.current[gamepadIndex] || new Set<number>();
+        // Gamepad support: use mapping to find which gamepad controls this player
+        // Find the gamepad index that maps to this player
+        let gamepadIndex: number | null = null;
+        for (const [gIndex, pId] of Object.entries(refs.gamepadToPlayer.current)) {
+          if (pId === player.playerId) {
+            gamepadIndex = parseInt(gIndex, 10);
+            break;
+          }
+        }
+        
+        const gamepad = gamepadIndex !== null ? refs.gamepads.current[gamepadIndex] : null;
+        const gamepadButtons = gamepadIndex !== null ? (refs.gamepadButtons.current[gamepadIndex] || new Set<number>()) : new Set<number>();
         const hasGamepad = gamepad !== null && gamepad !== undefined;
         
         // 0. Weapon Switching
@@ -316,34 +324,111 @@ export const updateGame = (refs: GameRefs, time: number) => {
         const avgX = sumX / activePlayers.length;
         const avgY = sumY / activePlayers.length;
 
-        const targetCamX = avgX - CANVAS_WIDTH / 2;
-        const targetCamY = avgY - CANVAS_HEIGHT / 2;
+        // 获取画布实际尺寸
+        const canvasWidth = refs.canvasWidth || window.innerWidth;
+        const canvasHeight = refs.canvasHeight || window.innerHeight;
+        
+        const targetCamX = avgX - canvasWidth / 2;
+        const targetCamY = avgY - canvasHeight / 2;
         
         refs.camera.current.x += (targetCamX - refs.camera.current.x) * 0.1;
         refs.camera.current.y += (targetCamY - refs.camera.current.y) * 0.1;
-        refs.camera.current.x = Math.max(0, Math.min(WORLD_WIDTH - CANVAS_WIDTH, refs.camera.current.x));
-        refs.camera.current.y = Math.max(0, Math.min(WORLD_HEIGHT - CANVAS_HEIGHT, refs.camera.current.y));
+        refs.camera.current.x = Math.max(0, Math.min(WORLD_WIDTH - canvasWidth, refs.camera.current.x));
+        refs.camera.current.y = Math.max(0, Math.min(WORLD_HEIGHT - canvasHeight, refs.camera.current.y));
     }
     
-    // 5. Enemy Spawning
-    // More players = more enemies?
-    const dynamicDifficulty = refs.difficultyLevel.current; // 动态难度（基于分数）
+    // 5. Enemy Spawning - Wave System
     const userDifficulty = refs.difficulty.current; // 用户选择的难度设置
     const difficultyConfig = DIFFICULTY_CONFIG[userDifficulty];
     const playerCount = Math.max(1, activePlayers.length);
-    // 限制最大敌人数量，避免后期过多
-    const baseMaxEnemies = 30 + (refs.wave.current * 3) + (dynamicDifficulty * 2);
-    const maxEnemies = Math.min(80, baseMaxEnemies) * (1 + (playerCount - 1) * 0.5) * difficultyConfig.maxEnemiesMultiplier;
-    // 降低生成率，使用更温和的增长曲线
-    const baseSpawnRate = 0.03 * (1 + dynamicDifficulty * 0.05); // 线性增长而非指数
-    const spawnRate = Math.min(0.08, baseSpawnRate) * (1 + (playerCount - 1) * 0.5) * difficultyConfig.spawnRateMultiplier; 
-
-    if (refs.enemies.current.length < maxEnemies) {
-      if (Math.random() < spawnRate) {
-          // Target random alive player
-          const target = activePlayers[Math.floor(Math.random() * activePlayers.length)];
-          if (target) spawnEnemy(refs, target);
-      }
+    
+    // 检查当前波次是否完成（所有怪物都被消灭）
+    const aliveEnemies = refs.enemies.current.filter(e => !e.isDead && !e.dying);
+    const currentEnemyCount = aliveEnemies.length;
+    
+    // 处理倒计时
+    if (refs.waveCountdown.current > 0) {
+        refs.waveCountdown.current--;
+        const secondsLeft = Math.ceil(refs.waveCountdown.current / 60);
+        if (secondsLeft > 0) {
+            refs.gameMessage.current = `下一波将在 ${secondsLeft} 秒后开始...`;
+            refs.gameMessageTimer.current = 60; // 持续显示
+        }
+        
+        // 倒计时结束，开始新的一波
+        if (refs.waveCountdown.current === 0) {
+            refs.wave.current++;
+            refs.isSpawningWave.current = true;
+            
+            // 销毁安全屋并重置掉落标志
+            refs.safeHouse.current = null;
+            refs.safeHouseDropped.current = false; // 重置，新一波可以掉落安全屋道具
+            
+            // 计算当前波的怪物数量：基础数量 + 波次增长 + 玩家数量加成 + 难度加成
+            const baseWaveEnemies = 20 + (refs.wave.current * 10); // 第1波30只，第2波40只，第3波50只...
+            const playerMultiplier = 1 + (playerCount - 1) * 0.5; // 多玩家增加50%每玩家
+            const difficultyMultiplier = difficultyConfig.maxEnemiesMultiplier;
+            const waveEnemiesTotal = Math.floor(baseWaveEnemies * playerMultiplier * difficultyMultiplier);
+            
+            refs.waveEnemiesTotal.current = waveEnemiesTotal;
+            refs.waveEnemiesRemaining.current = waveEnemiesTotal;
+            
+            // 显示波次消息
+            refs.gameMessage.current = `第 ${refs.wave.current} 波开始！`;
+            refs.gameMessageTimer.current = 120; // 2秒（60fps）
+        }
+    }
+    // 如果还没有开始第一波，直接开始
+    else if (refs.waveEnemiesTotal.current === 0 && refs.waveEnemiesRemaining.current === 0) {
+        refs.wave.current = 1;
+        refs.isSpawningWave.current = true;
+        
+        // 重置安全屋状态
+        refs.safeHouse.current = null;
+        refs.safeHouseDropped.current = false;
+        
+        // 计算当前波的怪物数量
+        const baseWaveEnemies = 20 + (refs.wave.current * 10); // 第1波30只，第2波40只，第3波50只...
+        const playerMultiplier = 1 + (playerCount - 1) * 0.5;
+        const difficultyMultiplier = difficultyConfig.maxEnemiesMultiplier;
+        const waveEnemiesTotal = Math.floor(baseWaveEnemies * playerMultiplier * difficultyMultiplier);
+        
+        refs.waveEnemiesTotal.current = waveEnemiesTotal;
+        refs.waveEnemiesRemaining.current = waveEnemiesTotal;
+        
+        // 显示波次消息
+        refs.gameMessage.current = `第 ${refs.wave.current} 波开始！`;
+        refs.gameMessageTimer.current = 120;
+    }
+    // 如果波次完成（剩余怪物数为0且不在生成中且没有倒计时），启动5秒倒计时
+    else if (!refs.isSpawningWave.current && refs.waveEnemiesRemaining.current === 0 && currentEnemyCount === 0 && refs.waveCountdown.current === 0) {
+        refs.waveCountdown.current = 300; // 5秒倒计时（60fps * 5）
+        refs.gameMessage.current = `第 ${refs.wave.current} 波完成！下一波将在 5 秒后开始...`;
+        refs.gameMessageTimer.current = 60;
+    }
+    
+    // 如果正在生成波次且没有倒计时，持续生成怪物
+    if (refs.isSpawningWave.current && refs.waveEnemiesRemaining.current > 0 && refs.waveCountdown.current === 0) {
+        // 每帧有一定概率生成怪物，但限制同时存在的怪物数量
+        const maxConcurrentEnemies = Math.min(30, Math.floor(refs.waveEnemiesTotal.current * 0.6)); // 最多同时存在60%的怪物
+        
+        if (currentEnemyCount < maxConcurrentEnemies) {
+            // 生成率：根据剩余怪物数调整，剩余越多生成越快
+            const spawnRate = Math.min(0.15, 0.05 + (refs.waveEnemiesRemaining.current / refs.waveEnemiesTotal.current) * 0.1);
+            
+            if (Math.random() < spawnRate) {
+                const target = activePlayers[Math.floor(Math.random() * activePlayers.length)];
+                if (target) {
+                    spawnEnemy(refs, target);
+                    refs.waveEnemiesRemaining.current--;
+                }
+            }
+        }
+        
+        // 如果所有怪物都已生成，标记生成完成
+        if (refs.waveEnemiesRemaining.current === 0) {
+            refs.isSpawningWave.current = false;
+        }
     }
 
     // 6. Enemy AI & State
@@ -363,11 +448,24 @@ export const updateGame = (refs: GameRefs, time: number) => {
           return; // Skip AI
       }
 
-      // Find closest player
+      // Find closest player (排除在安全屋内的玩家)
       let nearestPlayer: Entity | null = null;
       let minDist = Infinity;
       
       activePlayers.forEach(p => {
+          // 检查玩家是否在安全屋内
+          const safeHouse = refs.safeHouse.current;
+          let isInSafeHouse = false;
+          if (safeHouse) {
+              isInSafeHouse = p.pos.x >= safeHouse.x && 
+                             p.pos.x <= safeHouse.x + safeHouse.width &&
+                             p.pos.y >= safeHouse.y && 
+                             p.pos.y <= safeHouse.y + safeHouse.height;
+          }
+          
+          // 如果玩家在安全屋内，僵尸无法发现
+          if (isInSafeHouse) return;
+          
           const d = dist(enemy.pos, p.pos);
           if (d < minDist) {
               minDist = d;
@@ -421,18 +519,20 @@ export const updateGame = (refs: GameRefs, time: number) => {
       
       const p1 = players[0];
       const p2 = players[1]; // undefined if single player
+      const p3 = players[2]; // undefined if less than 3 players
       
       const p1Info = { weapon: p1.currentWeapon, ammo: p1.ammo[p1.currentWeapon] };
       const p2Info = p2 ? { weapon: p2.currentWeapon, ammo: p2.ammo[p2.currentWeapon] } : undefined;
+      const p3Info = p3 ? { weapon: p3.currentWeapon, ammo: p3.ammo[p3.currentWeapon] } : undefined;
       
-      refs.callbacks.current.onAmmoUpdate(p1Info, p2Info);
+      refs.callbacks.current.onAmmoUpdate(p1Info, p2Info, p3Info);
     }
 };
 
 // --- Helpers for Update ---
 
 const handlePlacement = (refs: GameRefs, weapon: any, player: PlayerEntity) => {
-    const gridSize = 16; 
+    const gridSize = 32; 
     const rawX = player.pos.x;
     const rawY = player.pos.y;
     
@@ -448,11 +548,11 @@ const handlePlacement = (refs: GameRefs, weapon: any, player: PlayerEntity) => {
 
         if (weapon.ammo !== -1) player.ammo[weapon.type] = Math.max(0, player.ammo[weapon.type] - 1);
         
-        const radius = 8; 
+        const radius = 16; 
         let body;
         
         if (weapon.type === WeaponType.FAKE_WALL) {
-            body = Matter.Bodies.rectangle(placePos.x, placePos.y, 16, 16, { 
+            body = Matter.Bodies.rectangle(placePos.x, placePos.y, 32, 32, { 
                 isStatic: true, 
                 label: 'OBSTACLE',
                 collisionFilter: { 
@@ -600,7 +700,7 @@ const spawnEnemy = (refs: GameRefs, player: Entity) => {
             spawnY = margin;
     }
 
-    const radius = 9;
+    const radius = 18;
     const body = Matter.Bodies.circle(spawnX, spawnY, radius, {
         label: 'ENEMY',
         // Low friction to allow knockback sliding
@@ -658,7 +758,7 @@ const updateObstacles = (refs: GameRefs) => {
             obs.isDead = true;
             if (obs.body) Matter.World.remove(refs.engine.world, obs.body);
             if (obs.isExplosive) {
-                createExplosion(refs, obs.pos, 800, BARREL_EXPLOSION_RANGE); 
+                createExplosion(refs, obs.pos, 1200, BARREL_EXPLOSION_RANGE); 
             } else {
                 spawnParticles(refs, obs.pos, 10, '#888888', 3, false); 
             }
@@ -668,7 +768,17 @@ const updateObstacles = (refs: GameRefs) => {
 };
 
 const updateItems = (refs: GameRefs) => {
+    const now = Date.now();
+    const HEALTH_PACK_LIFETIME = 20000; // 血包20秒后自动销毁
+    
     refs.items.current.forEach(item => {
+        // 检查血包是否超时
+        if (item.type === EntityType.ITEM_HEALTH && item.spawnTime) {
+            if (now - item.spawnTime > HEALTH_PACK_LIFETIME) {
+                item.isDead = true;
+            }
+        }
+        
         if (item.isDead && item.body) {
             Matter.World.remove(refs.engine.world, item.body);
         }

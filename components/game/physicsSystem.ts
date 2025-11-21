@@ -3,7 +3,7 @@
 import Matter from 'matter-js';
 import { GameRefs } from './types';
 import { Bullet, Entity, PlayerEntity, EntityType, WeaponType, Vector2 } from '../../types';
-import { COLORS, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_HP, HEALTH_PACK_VAL, CAT_DEFAULT, CAT_PLAYER, CAT_ENEMY, CAT_BULLET, CAT_WALL, CAT_OBSTACLE, CAT_ENEMY_BULLET, CAT_ITEM } from '../../constants';
+import { COLORS, WORLD_WIDTH, WORLD_HEIGHT, PLAYER_HP, HEALTH_PACK_VAL, CAT_DEFAULT, CAT_PLAYER, CAT_ENEMY, CAT_BULLET, CAT_WALL, CAT_OBSTACLE, CAT_ENEMY_BULLET, CAT_ITEM, PLAYER_COLORS } from '../../constants';
 import { dist, spawnParticles } from './utils';
 
 export { createExplosion, initPhysics, resetGamePhysics };
@@ -49,6 +49,24 @@ const initPhysics = (refs: GameRefs) => {
                   if (item.type === EntityType.ITEM_HEALTH) {
                       player.hp = Math.min(100, player.hp + HEALTH_PACK_VAL);
                       spawnParticles(refs, player.pos, 10, '#00FF00', 2, false);
+                  } else if (item.type === EntityType.ITEM_SAFE_HOUSE) {
+                      // 拾取安全屋道具后立即展开安全屋
+                      const gridSize = 32;
+                      const snapX = Math.round(player.pos.x / gridSize) * gridSize;
+                      const snapY = Math.round(player.pos.y / gridSize) * gridSize;
+                      
+                      // 安全屋大小：4x4格子 = 128x128像素
+                      const safeHouseSize = 128;
+                      refs.safeHouse.current = {
+                          x: snapX - safeHouseSize / 2,
+                          y: snapY - safeHouseSize / 2,
+                          width: safeHouseSize,
+                          height: safeHouseSize
+                      };
+                      
+                      spawnParticles(refs, player.pos, 20, '#4169E1', 3, false);
+                      refs.gameMessage.current = '安全屋已展开！';
+                      refs.gameMessageTimer.current = 120;
                   }
               }
               return;
@@ -213,12 +231,12 @@ const initPhysics = (refs: GameRefs) => {
                
                // Dying enemies don't attack
                if (enemy && enemy.dying) return;
+               
+               // 僵尸不能攻击油桶（油漆桶）
+               if (obs && obs.isExplosive) return;
 
                const now = Date.now();
                if (enemy && obs && now - (enemy.lastAttackTime || 0) > 1000) {
-                   // Zombies don't attack explosive barrels
-                   if (obs.isExplosive) return;
-
                    enemy.lastAttackTime = now;
                    obs.hp -= 20;
                    refs.soundSystem.current?.playHit(); // Safe Sound
@@ -321,7 +339,7 @@ const createExplosion = (refs: GameRefs, pos: {x: number, y: number}, damage: nu
 };
 
 const spawnItem = (refs: GameRefs, pos: Vector2, type: EntityType) => {
-    const body = Matter.Bodies.rectangle(pos.x, pos.y, 16, 16, {
+    const body = Matter.Bodies.rectangle(pos.x, pos.y, 32, 32, {
         isStatic: true,
         isSensor: true, 
         label: 'ITEM',
@@ -336,11 +354,12 @@ const spawnItem = (refs: GameRefs, pos: Vector2, type: EntityType) => {
         pos: { ...pos },
         velocity: { x: 0, y: 0 },
         rotation: 0,
-        radius: 8,
+        radius: 16,
         hp: 1,
         maxHp: 1,
         color: '#fff',
         isDead: false,
+        spawnTime: Date.now(), // 记录生成时间
         body: body
     };
     body.plugin.entity = item;
@@ -363,6 +382,12 @@ const triggerEnemyDeath = (refs: GameRefs, enemy: Entity) => {
     // Drop Health Pack for Devil
     if (enemy.type === EntityType.DEVIL) {
         spawnItem(refs, enemy.pos, EntityType.ITEM_HEALTH);
+        
+        // 随机掉落安全屋道具（每波只掉落一个）
+        if (!refs.safeHouseDropped.current && Math.random() < 0.3) {
+            spawnItem(refs, enemy.pos, EntityType.ITEM_SAFE_HOUSE);
+            refs.safeHouseDropped.current = true;
+        }
     }
 
     const now = Date.now();
@@ -376,7 +401,7 @@ const triggerEnemyDeath = (refs: GameRefs, enemy: Entity) => {
     const baseScore = enemy.type === EntityType.DEVIL ? 500 : 100;
     refs.score.current += baseScore * refs.multiplier.current;
 
-    if (refs.score.current > refs.wave.current * 5000) refs.wave.current++;
+    // 波次现在由波次系统控制，不再基于分数增长
     
     // Loot Drops (Ammo) - Give to ALL players
     const activePlayers = refs.players.current.filter(p => !p.isDead);
@@ -401,13 +426,14 @@ const resetGamePhysics = (refs: GameRefs, playerCount: number = 1, livesPerPlaye
     // Reset Player Bodies
     refs.players.current = [];
     
-    const playerRadius = 8;
+    const playerRadius = 16;
     const startPositions = playerCount === 1 
         ? [{ x: WORLD_WIDTH / 2, y: 150 }]
-        : [{ x: WORLD_WIDTH / 2 - 40, y: 150 }, { x: WORLD_WIDTH / 2 + 40, y: 150 }];
+        : playerCount === 2
+        ? [{ x: WORLD_WIDTH / 2 - 40, y: 150 }, { x: WORLD_WIDTH / 2 + 40, y: 150 }]
+        : [{ x: WORLD_WIDTH / 2 - 60, y: 150 }, { x: WORLD_WIDTH / 2, y: 150 }, { x: WORLD_WIDTH / 2 + 60, y: 150 }];
 
-    const colors = [COLORS.PLAYER_SKIN, '#3366FF']; // P1 Red, P2 Blue
-
+    // 每个玩家使用不同的颜色
     for (let i = 0; i < playerCount; i++) {
         const pos = startPositions[i];
         const playerBody = Matter.Bodies.circle(pos.x, pos.y, playerRadius, {
@@ -431,7 +457,7 @@ const resetGamePhysics = (refs: GameRefs, playerCount: number = 1, livesPerPlaye
             radius: playerRadius,
             hp: PLAYER_HP,
             maxHp: PLAYER_HP,
-            color: colors[i % colors.length],
+            color: PLAYER_COLORS[i % PLAYER_COLORS.length],
             isDead: false,
             lastAttackTime: 0,
             lastDamageTime: 0,
@@ -456,7 +482,7 @@ const resetGamePhysics = (refs: GameRefs, playerCount: number = 1, livesPerPlaye
     
     // Generate Random Initial Obstacles (Walls & Barrels)
     const obstacles: Entity[] = [];
-    const gridSize = 16;
+    const gridSize = 32;
     const spawnZone = 300; 
     const startCenter = { x: WORLD_WIDTH / 2, y: 150 };
 
@@ -470,11 +496,11 @@ const resetGamePhysics = (refs: GameRefs, playerCount: number = 1, livesPerPlaye
         if (rx < 100 || rx > WORLD_WIDTH - 100 || ry < 100 || ry > WORLD_HEIGHT - 100) continue;
 
         const isBarrel = Math.random() > 0.6; 
-        const radius = 8;
+        const radius = 16;
         
         let body;
         if (!isBarrel) {
-             body = Matter.Bodies.rectangle(rx, ry, 16, 16, { 
+             body = Matter.Bodies.rectangle(rx, ry, 32, 32, { 
                 isStatic: true, 
                 label: 'OBSTACLE',
                 collisionFilter: { 

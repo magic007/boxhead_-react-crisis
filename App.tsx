@@ -42,6 +42,9 @@ export default function App() {
   // Player 2 Stats (Optional)
   const [p2Stats, setP2Stats] = useState<{hp: number, weapon: string, ammo: number, lives: number} | null>(null);
   
+  // Player 3 Stats (Optional)
+  const [p3Stats, setP3Stats] = useState<{hp: number, weapon: string, ammo: number, lives: number} | null>(null);
+  
   const [finalScore, setFinalScore] = useState(0);
 
   useEffect(() => {
@@ -76,7 +79,8 @@ export default function App() {
     setScore(0);
     setMultiplier(1);
     setP1Stats({ hp: 100, weapon: WeaponType.PISTOL, ammo: -1, lives: livesPerPlayer });
-    setP2Stats(count === 2 ? { hp: 100, weapon: WeaponType.PISTOL, ammo: -1, lives: livesPerPlayer } : null);
+    setP2Stats(count >= 2 ? { hp: 100, weapon: WeaponType.PISTOL, ammo: -1, lives: livesPerPlayer } : null);
+    setP3Stats(count >= 3 ? { hp: 100, weapon: WeaponType.PISTOL, ammo: -1, lives: livesPerPlayer } : null);
     setGameState(GameState.PLAYING);
   }, [livesPerPlayer]);
 
@@ -95,12 +99,18 @@ export default function App() {
     if (hps[1] !== undefined && lives[1] !== undefined) {
         setP2Stats(prev => prev ? ({ ...prev, hp: hps[1], lives: lives[1] }) : null);
     }
+    if (hps[2] !== undefined && lives[2] !== undefined) {
+        setP3Stats(prev => prev ? ({ ...prev, hp: hps[2], lives: lives[2] }) : null);
+    }
   }, []);
 
-  const handleAmmoUpdate = useCallback((p1: {weapon: string, ammo: number}, p2?: {weapon: string, ammo: number}) => {
+  const handleAmmoUpdate = useCallback((p1: {weapon: string, ammo: number}, p2?: {weapon: string, ammo: number}, p3?: {weapon: string, ammo: number}) => {
     setP1Stats(prev => ({ ...prev, ...p1 }));
     if (p2) {
         setP2Stats(prev => prev ? ({ ...prev, ...p2 }) : null);
+    }
+    if (p3) {
+        setP3Stats(prev => prev ? ({ ...prev, ...p3 }) : null);
     }
   }, []);
 
@@ -214,7 +224,7 @@ export default function App() {
       <style>{styles}</style>
       
       {/* Game Container */}
-      <div className="relative">
+      <div className="relative w-full h-full">
         <GameCanvas 
           gameState={gameState}
           playerCount={playerCount}
@@ -233,6 +243,7 @@ export default function App() {
               multiplier={multiplier} 
               p1Stats={p1Stats}
               p2Stats={p2Stats}
+              p3Stats={p3Stats}
             />
             {isMobile && playerCount === 1 && showVirtualControls && (
               <VirtualControls currentWeapon={p1Stats.weapon} />
@@ -287,6 +298,22 @@ export default function App() {
               </button>
               
               <button 
+                onClick={() => handleStart(3)}
+                className="btn-tactical w-full py-3 text-lg font-bold text-zinc-100 bg-zinc-800 hover:bg-green-900 hover:text-white group"
+              >
+                 <div className="flex items-center justify-center gap-3">
+                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform">
+                     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                     <circle cx="9" cy="7" r="4"/>
+                     <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                     <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                     <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+                   </svg>
+                   三人合作
+                </div>
+              </button>
+              
+              <button 
                 onClick={() => setIsSettingsOpen(true)}
                 className="btn-tactical w-full py-3 text-lg font-bold text-zinc-400 bg-zinc-900 hover:bg-zinc-800 group"
               >
@@ -307,6 +334,9 @@ export default function App() {
                   </div>
                   <div>
                     <span className="text-blue-500">玩家2:</span> 方向键移动<br/>数字0 攻击
+                  </div>
+                  <div>
+                    <span className="text-green-500">玩家3:</span> TFGH 移动<br/>R 攻击
                   </div>
                 </div>
                 <div className="mt-2 pt-2 border-t border-zinc-700/50 text-xs text-zinc-500 text-center flex items-center justify-center gap-1.5">

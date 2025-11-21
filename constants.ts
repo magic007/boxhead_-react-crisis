@@ -26,7 +26,7 @@ export const DEVIL_FIRE_RATE = 3000; // 红色僵尸攻击间隔(毫秒) - 从20
 
 // 道具配置
 export const HEALTH_PACK_VAL = 25; // 医疗包恢复量
-export const BARREL_EXPLOSION_RANGE = 30; // 油桶爆炸触发范围
+export const BARREL_EXPLOSION_RANGE = 50; // 油桶爆炸触发范围
 
 // 碰撞类别掩码 (用于 Matter.js 碰撞过滤)
 export const CAT_DEFAULT = 0x0001; // 默认
@@ -48,7 +48,7 @@ export const WEAPONS: Record<WeaponType, WeaponConfig> = {
     spread: 0.05, // 散射角度
     count: 1, // 单次发射数量
     ammo: 10000, // 初始弹药(无限)
-    color: '#00BFFF' // 子弹颜色
+    color: '#0066FF' // 子弹颜色 - 深蓝色，在浅绿背景上更明显
   },
   [WeaponType.UZI]: {
     type: WeaponType.UZI,
@@ -58,17 +58,17 @@ export const WEAPONS: Record<WeaponType, WeaponConfig> = {
     spread: 0.2,
     count: 1,
     ammo: 10000, 
-    color: '#FFA500'
+    color: '#FF6600' // 更鲜艳的橙红色
   },
   [WeaponType.SHOTGUN]: {
     type: WeaponType.SHOTGUN,
-    damage: 25,
+    damage: 35, // 增加威力：从25提升到35，每次6发总伤害210
     fireRate: 800,
     speed: 22,
     spread: 0.3,
     count: 6,
     ammo: 10000, 
-    color: '#FFFFFF'
+    color: '#FF0000' // 亮红色，在浅绿背景上非常明显
   },
   [WeaponType.FAKE_WALL]: {
     type: WeaponType.FAKE_WALL,
@@ -78,18 +78,18 @@ export const WEAPONS: Record<WeaponType, WeaponConfig> = {
     spread: 0,
     count: 1,
     ammo: 10000, 
-    color: '#888888',
+    color: '#A0AEC0', // 调亮
     isDeployable: true // 是否为可放置物品
   },
   [WeaponType.BARREL]: {
     type: WeaponType.BARREL,
-    damage: 800, 
+    damage: 1200, 
     fireRate: 20, 
     speed: 0,
     spread: 0,
     count: 1,
     ammo: 10000, 
-    color: '#AA0000',
+    color: '#f87171', // 调亮
     isDeployable: true 
   },
   [WeaponType.GRENADE]: {
@@ -110,14 +110,14 @@ export const WEAPONS: Record<WeaponType, WeaponConfig> = {
     spread: 0.02, // 低散射
     count: 1, // 单发
     ammo: 10000, // 无限弹药
-    color: '#FF4500' // 橙红色
+    color: '#FF3300' // 更鲜艳的红色，在浅绿背景上更明显
   }
 };
 
 // 颜色配置
 export const COLORS = {
-  FLOOR: '#e8e8e8', // 地板基础色 - 浅灰色混凝土
-  FLOOR_GRID: '#d4d4d4', // 网格线 - 深一点的灰色
+  FLOOR: '#e8f5e9', // 地板基础色 - 护眼浅绿色
+  FLOOR_GRID: '#c8e6c9', // 网格线 - 浅绿色
   
   // 墙体
   WALL: '#718096', // 墙体侧面 - 蓝灰色
@@ -144,10 +144,22 @@ export const COLORS = {
   DEVIL_HORNS: '#f6e05e', // 恶魔角 - 黄色
   
   // 障碍物
-  OBSTACLE_WALL: '#718096', // 障碍墙
-  OBSTACLE_BARREL: '#e53e3e', // 油桶 - 红
-  OBSTACLE_BARREL_TOP: '#fc8181' // 油桶顶 - 浅红
+  OBSTACLE_WALL: '#808080', // 障碍墙 - 灰色
+  OBSTACLE_BARREL: '#f87171', // 油桶 - 调亮的红色
+  OBSTACLE_BARREL_TOP: '#fca5a5' // 油桶顶 - 更浅的红
 };
+
+// 玩家角色颜色数组（每个玩家不同的衣服颜色）
+export const PLAYER_COLORS = [
+  '#FF6B6B', // P1 - 红色
+  '#4ECDC4', // P2 - 青色
+  '#95E1D3', // P3 - 薄荷绿
+  '#F38181', // P4 - 粉红色
+  '#AA96DA', // P5 - 紫色
+  '#FCBAD3', // P6 - 浅粉色
+  '#FFD93D', // P7 - 黄色
+  '#6BCB77', // P8 - 绿色
+];
 
 // 难度配置
 export const DIFFICULTY_CONFIG: Record<Difficulty, {

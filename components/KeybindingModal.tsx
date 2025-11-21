@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Action, KeyMap, getSavedKeyMap, saveKeyMap, DEFAULT_KEYMAP_P1, DEFAULT_KEYMAP_P2, ACTION_LABELS } from './game/inputConfig';
+import { Action, KeyMap, getSavedKeyMap, saveKeyMap, DEFAULT_KEYMAP_P1, DEFAULT_KEYMAP_P2, DEFAULT_KEYMAP_P3, ACTION_LABELS, getSavedGamepadMapping, saveGamepadMapping } from './game/inputConfig';
 import { Difficulty } from '../types';
 
 interface KeybindingModalProps {
@@ -27,7 +27,7 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
   difficulty,
   onDifficultyChange
 }) => {
-  const [selectedTab, setSelectedTab] = useState<'general' | 1 | 2>('general');
+  const [selectedTab, setSelectedTab] = useState<'general' | 1 | 2 | 3>('general');
   const [selectedPlayer, setSelectedPlayer] = useState<number>(1);
   const [keyMap, setKeyMap] = useState<KeyMap>(getSavedKeyMap(1));
   const [listeningAction, setListeningAction] = useState<Action | null>(null);
@@ -43,11 +43,52 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
       mapping: string;
     }>;
   } | null>(null);
+  const [gamepadMapping, setGamepadMapping] = useState<Record<number, number>>(getSavedGamepadMapping());
+
+  const updateGamepadList = () => {
+    const supported = 'getGamepads' in navigator;
+    let connected = 0;
+    const gamepads: Array<{
+      id: string;
+      index: number;
+      buttons: number;
+      axes: number;
+      mapping: string;
+    }> = [];
+
+    if (supported) {
+      const gamepadList = navigator.getGamepads();
+      if (gamepadList) {
+        for (let i = 0; i < gamepadList.length; i++) {
+          const gamepad = gamepadList[i];
+          if (gamepad) {
+            connected++;
+            gamepads.push({
+              id: gamepad.id || `手柄 ${i + 1}`,
+              index: gamepad.index,
+              buttons: gamepad.buttons.length,
+              axes: gamepad.axes.length,
+              mapping: gamepad.mapping || 'standard'
+            });
+          }
+        }
+      }
+    }
+
+    setGamepadInfo({
+      supported,
+      connected,
+      gamepads
+    });
+  };
 
   useEffect(() => {
     if (isOpen) {
       if (selectedTab === 'general') {
         setListeningAction(null);
+        // 更新手柄映射和检测已连接的手柄
+        setGamepadMapping(getSavedGamepadMapping());
+        updateGamepadList();
       } else {
         setSelectedPlayer(selectedTab);
         setKeyMap(getSavedKeyMap(selectedTab));
@@ -84,13 +125,42 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
   const handleSave = () => {
     if (selectedTab !== 'general') {
       saveKeyMap(selectedTab, keyMap);
+    } else {
+      // 保存手柄映射
+      saveGamepadMapping(gamepadMapping);
     }
     onClose();
+  };
+
+  const handleGamepadMappingChange = (gamepadIndex: number, playerId: number) => {
+    setGamepadMapping(prev => {
+      const newMapping = { ...prev };
+      // 如果该玩家已经被其他手柄控制，先清除旧映射
+      for (const [gIndex, pId] of Object.entries(newMapping)) {
+        if (pId === playerId && parseInt(gIndex, 10) !== gamepadIndex) {
+          delete newMapping[parseInt(gIndex, 10)];
+        }
+      }
+      // 设置新映射
+      if (playerId === 0) {
+        // 0 表示不控制任何玩家
+        delete newMapping[gamepadIndex];
+      } else {
+        newMapping[gamepadIndex] = playerId;
+      }
+      return newMapping;
+    });
   };
   
   const handleReset = () => {
     if (selectedTab !== 'general') {
-      setKeyMap(selectedTab === 1 ? DEFAULT_KEYMAP_P1 : DEFAULT_KEYMAP_P2);
+      if (selectedTab === 1) {
+        setKeyMap(DEFAULT_KEYMAP_P1);
+      } else if (selectedTab === 2) {
+        setKeyMap(DEFAULT_KEYMAP_P2);
+      } else {
+        setKeyMap(DEFAULT_KEYMAP_P3);
+      }
       setListeningAction(null);
     }
   };
@@ -200,6 +270,16 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
           >
             玩家 2 (P2)
           </button>
+          <button 
+            onClick={() => setSelectedTab(3)}
+            className={`px-4 py-2 font-bold rounded transition-colors ${
+              selectedTab === 3 
+                ? 'bg-green-600 text-white' 
+                : 'bg-gray-700 text-gray-400 hover:bg-gray-650'
+            }`}
+          >
+            玩家 3 (P3)
+          </button>
         </div>
 
         {/* General Settings Tab */}
@@ -284,12 +364,45 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-gray-300 font-medium">手柄检测 (Gamepad)</span>
                 <button
-                  onClick={detectGamepads}
+                  onClick={() => {
+                    updateGamepadList();
+                    detectGamepads();
+                  }}
                   className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded transition-colors"
                 >
                   检测手柄
                 </button>
               </div>
+              
+              {/* 手柄角色选择 */}
+              {gamepadInfo && gamepadInfo.supported && gamepadInfo.gamepads.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-600">
+                  <div className="text-gray-300 font-medium mb-3">手柄角色分配</div>
+                  <div className="space-y-2">
+                    {gamepadInfo.gamepads.map((gamepad) => (
+                      <div key={gamepad.index} className="flex items-center justify-between bg-gray-800 p-3 rounded">
+                        <div className="flex-1">
+                          <div className="text-white font-bold text-sm">{gamepad.id}</div>
+                          <div className="text-gray-400 text-xs">手柄索引: {gamepad.index}</div>
+                        </div>
+                        <select
+                          value={gamepadMapping[gamepad.index] || 0}
+                          onChange={(e) => handleGamepadMappingChange(gamepad.index, parseInt(e.target.value, 10))}
+                          className="px-3 py-1 bg-gray-700 text-white rounded border border-gray-600 hover:bg-gray-600 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value={0}>未分配</option>
+                          <option value={1}>玩家 1 (P1)</option>
+                          <option value={2}>玩家 2 (P2)</option>
+                          <option value={3}>玩家 3 (P3)</option>
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-xs text-gray-400">
+                    提示：每个手柄只能控制一个玩家，每个玩家只能被一个手柄控制
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

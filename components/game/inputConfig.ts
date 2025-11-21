@@ -48,6 +48,22 @@ export const DEFAULT_KEYMAP_P2: KeyMap = {
   [Action.PAUSE]: 'Escape',
 };
 
+export const DEFAULT_KEYMAP_P3: KeyMap = {
+  [Action.MOVE_UP]: 'KeyT',
+  [Action.MOVE_DOWN]: 'KeyG',
+  [Action.MOVE_LEFT]: 'KeyF',
+  [Action.MOVE_RIGHT]: 'KeyH',
+  [Action.SHOOT]: 'KeyR',
+  [Action.WEAPON_PISTOL]: 'KeyY',
+  [Action.WEAPON_UZI]: 'KeyU',
+  [Action.WEAPON_SHOTGUN]: 'KeyI',
+  [Action.WEAPON_WALL]: 'KeyO',
+  [Action.WEAPON_BARREL]: 'KeyP',
+  [Action.WEAPON_CANNON]: 'KeyBracketLeft',
+  [Action.WEAPON_SWITCH]: 'KeyE', // 默认 E 键循环切换武器
+  [Action.PAUSE]: 'Escape',
+};
+
 export const ACTION_LABELS: Record<Action, string> = {
   [Action.MOVE_UP]: '向上移动',
   [Action.MOVE_DOWN]: '向下移动',
@@ -68,7 +84,14 @@ export const getSavedKeyMap = (playerId: number = 1): KeyMap => {
   try {
     const key = `boxhead_keymap_p${playerId}`;
     const saved = localStorage.getItem(key);
-    const defaultMap = playerId === 1 ? DEFAULT_KEYMAP_P1 : DEFAULT_KEYMAP_P2;
+    let defaultMap: KeyMap;
+    if (playerId === 1) {
+      defaultMap = DEFAULT_KEYMAP_P1;
+    } else if (playerId === 2) {
+      defaultMap = DEFAULT_KEYMAP_P2;
+    } else {
+      defaultMap = DEFAULT_KEYMAP_P3;
+    }
     if (saved) {
       return { ...defaultMap, ...JSON.parse(saved) };
     }
@@ -76,7 +99,9 @@ export const getSavedKeyMap = (playerId: number = 1): KeyMap => {
   } catch (e) {
     console.error('Failed to load keymap', e);
   }
-  return playerId === 1 ? DEFAULT_KEYMAP_P1 : DEFAULT_KEYMAP_P2;
+  if (playerId === 1) return DEFAULT_KEYMAP_P1;
+  if (playerId === 2) return DEFAULT_KEYMAP_P2;
+  return DEFAULT_KEYMAP_P3;
 };
 
 type Listener = (playerId: number, map: KeyMap) => void;
@@ -90,4 +115,31 @@ export const subscribeToKeyMapChange = (listener: Listener) => {
 export const saveKeyMap = (playerId: number, keyMap: KeyMap) => {
   localStorage.setItem(`boxhead_keymap_p${playerId}`, JSON.stringify(keyMap));
   listeners.forEach(l => l(playerId, keyMap));
+};
+
+// 手柄到玩家的映射：gamepadIndex -> playerId
+export const getSavedGamepadMapping = (): Record<number, number> => {
+  try {
+    const saved = localStorage.getItem('boxhead_gamepad_mapping');
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('Failed to load gamepad mapping', e);
+  }
+  // 默认映射：手柄0 -> 玩家1, 手柄1 -> 玩家2, 手柄2 -> 玩家3
+  return { 0: 1, 1: 2, 2: 3 };
+};
+
+type GamepadMappingListener = (mapping: Record<number, number>) => void;
+const gamepadMappingListeners: Set<GamepadMappingListener> = new Set();
+
+export const subscribeToGamepadMappingChange = (listener: GamepadMappingListener) => {
+  gamepadMappingListeners.add(listener);
+  return () => { gamepadMappingListeners.delete(listener); };
+};
+
+export const saveGamepadMapping = (mapping: Record<number, number>) => {
+  localStorage.setItem('boxhead_gamepad_mapping', JSON.stringify(mapping));
+  gamepadMappingListeners.forEach(l => l(mapping));
 };

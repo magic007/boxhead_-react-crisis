@@ -12,7 +12,8 @@ export enum EntityType {
   DEVIL,
   BOX,
   OBSTACLE, // 新增：障碍物类型
-  ITEM_HEALTH // 新增：血包
+  ITEM_HEALTH, // 新增：血包
+  ITEM_SAFE_HOUSE // 新增：安全屋道具
 }
 
 export enum WeaponType {
@@ -63,8 +64,10 @@ export interface Entity {
   lastHitTime?: number; // Tracks when the entity was last hit for knockback stun
   // For obstacles
   isExplosive?: boolean; // 是否易爆（油桶）
+  // For items
+  spawnTime?: number; // 道具生成时间（用于超时销毁）
   // Physics body from Matter.js (typed as any to avoid strict lib dependency issues in types file)
-  body?: any; 
+  body?: any;
 }
 
 export interface PlayerEntity extends Entity {

@@ -34,12 +34,12 @@ const getFloorPattern = (ctx: CanvasRenderingContext2D) => {
     const c = canvas.getContext('2d');
     if (!c) return null;
     
-    // 基础地板颜色 - 温暖的沙色/米色
-    c.fillStyle = '#f0e6d2'; // 稍微亮一点，更干净
+    // 基础地板颜色 - 护眼浅绿色
+    c.fillStyle = '#e8f5e9'; // 护眼浅绿色
     c.fillRect(0, 0, 64, 64);
     
     // 瓷砖缝隙
-    c.strokeStyle = '#d8d0c0'; // 浅灰色缝隙
+    c.strokeStyle = '#c8e6c9'; // 浅绿色缝隙
     c.lineWidth = 2;
     c.strokeRect(0, 0, 64, 64);
     
@@ -132,17 +132,17 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
             ctx.closePath();
             ctx.fill();
 
-            // 主体（深灰金属，扁平渐变）
+            // 主体（调亮的灰金属，扁平渐变）
             const bodyGrad = ctx.createLinearGradient(-width / 2, -height / 2, width / 2, height / 2);
-            bodyGrad.addColorStop(0, '#1f1f22');
-            bodyGrad.addColorStop(0.5, '#303035');
-            bodyGrad.addColorStop(1, '#3f3f45');
+            bodyGrad.addColorStop(0, '#4a5568');
+            bodyGrad.addColorStop(0.5, '#718096');
+            bodyGrad.addColorStop(1, '#a0aec0');
             ctx.fillStyle = bodyGrad;
             drawRoundedRect(ctx, -width / 2, -height / 2, width, height, cornerRadius);
             ctx.fill();
 
-            // 红色环形条纹
-            ctx.fillStyle = '#d62828';
+            // 红色环形条纹（调亮）
+            ctx.fillStyle = '#f87171';
             drawRoundedRect(
                 ctx,
                 -width / 2 + padding,
@@ -168,22 +168,26 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
             ctx.lineTo(width / 2 - padding, height / 2 - padding);
             ctx.stroke();
 
-            // 边框
-            ctx.strokeStyle = '#0f0f11';
+            // 边框（调亮）
+            ctx.strokeStyle = '#2d3748';
             ctx.lineWidth = 2;
             drawRoundedRect(ctx, -width / 2, -height / 2, width, height, cornerRadius);
             ctx.stroke();
 
         } else {
-            // --- 木箱/假墙 (Crate/Wall) - 长方形 ---
+            // --- 假墙 (Fake Wall) - 灰色，hp越低越透明 ---
             const size = obs.radius * 1.4; // 更窄
             const half = size / 2;
             const shadowDepth = size * 0.35;
             const shadowLength = size * 0.55;
             const shadowSkew = size * 0.1;
             
+            // 根据hp计算透明度，hp越低越透明（颜色越淡）
+            const alpha = Math.max(0.3, healthRatio); // 最低30%透明度，hp为0时最淡
+            
             // 阴影（左侧斜倒，顶部与箱底对齐）
-            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.globalAlpha = alpha * 0.25;
+            ctx.fillStyle = 'rgba(0,0,0,1)';
             ctx.beginPath();
             ctx.moveTo(-half, half);
             ctx.lineTo(half, half);
@@ -192,16 +196,18 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
             ctx.closePath();
             ctx.fill();
             
-            // 箱子主体 (木纹) - 光源从右下，从左上暗到右下亮
+            // 假墙主体 (灰色) - 光源从右下，从左上暗到右下亮
+            ctx.globalAlpha = alpha;
             const gradFront = ctx.createLinearGradient(-half, -half, half, half);
-            gradFront.addColorStop(0, '#6d4320');
-            gradFront.addColorStop(0.5, '#8b5a2b');
-            gradFront.addColorStop(1, '#a67c52');
+            gradFront.addColorStop(0, '#606060'); // 深灰
+            gradFront.addColorStop(0.5, '#808080'); // 中灰
+            gradFront.addColorStop(1, '#a0a0a0'); // 浅灰
             ctx.fillStyle = gradFront;
             ctx.fillRect(-half, -half, size, size);
             
-            // 木板纹理线条
-            ctx.strokeStyle = '#6d4320';
+            // 砖块纹理线条（灰色）
+            ctx.globalAlpha = alpha * 0.8;
+            ctx.strokeStyle = '#505050';
             ctx.lineWidth = 1.5;
             const plankH = size / 3;
             for(let i=1; i<3; i++) {
@@ -211,7 +217,7 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
                 ctx.stroke();
             }
             
-            // 垂直木板线
+            // 垂直砖块线
             for(let i=1; i<3; i++) {
                 ctx.beginPath();
                 ctx.moveTo(-half + i*(size/3), -half);
@@ -219,21 +225,14 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
                 ctx.stroke();
             }
             
-            // 钉子（四个角）
-            const nailPositions = [
-                [-half + 4, -half + 4],
-                [half - 4, -half + 4],
-                [-half + 4, half - 4],
-                [half - 4, half - 4]
-            ];
+            // 边框
+            ctx.globalAlpha = alpha;
+            ctx.strokeStyle = '#404040';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(-half, -half, size, size);
             
-            nailPositions.forEach(([x, y]) => {
-                // 钉子主体
-                ctx.fillStyle = '#3e2714';
-                ctx.beginPath();
-                ctx.arc(x, y, 2, 0, Math.PI*2);
-                ctx.fill();
-            });
+            // 重置透明度
+            ctx.globalAlpha = 1.0;
             
             // 边框 (金属加固条)
             ctx.strokeStyle = '#4a3326';
@@ -305,7 +304,7 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
        ctx.restore();
     });
     
-    // 5. Items (Health Packs - 简化的医疗包)
+    // 5. Items (Health Packs & Safe House Items)
     refs.items.current.forEach(item => {
         if (item.type === EntityType.ITEM_HEALTH) {
             ctx.save();
@@ -315,7 +314,7 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
             const floatY = Math.sin(Date.now() * 0.005) * 3;
             ctx.translate(0, floatY);
             
-            const s = 18; // 更小的尺寸
+            const s = 32; // 和假墙一样大小
             const shadowDepth = s * 0.4;
             const shadowLength = s * 0.6;
             const shadowSkew = s * 0.12;
@@ -340,8 +339,8 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
             
             // Red Cross
             ctx.fillStyle = '#ff0000';
-            const cs = 10;
-            const cw = 3;
+            const cs = 18; // 按比例放大
+            const cw = 5; // 按比例放大
             ctx.fillRect(-cw/2, -cs/2, cw, cs);
             ctx.fillRect(-cs/2, -cw/2, cs, cw);
             
@@ -351,8 +350,88 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
             ctx.strokeRect(-s/2, -s/2, s, s);
             
             ctx.restore();
+        } else if (item.type === EntityType.ITEM_SAFE_HOUSE) {
+            // 安全屋道具渲染
+            ctx.save();
+            ctx.translate(item.pos.x, item.pos.y);
+            
+            // Float Animation
+            const floatY = Math.sin(Date.now() * 0.005) * 3;
+            ctx.translate(0, floatY);
+            
+            const s = 20;
+            const shadowDepth = s * 0.4;
+            const shadowLength = s * 0.6;
+            const shadowSkew = s * 0.12;
+            
+            // 阴影
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            ctx.beginPath();
+            ctx.moveTo(-s/2, s/2);
+            ctx.lineTo(s/2, s/2);
+            ctx.lineTo(s/2 + shadowSkew, s/2 - shadowDepth);
+            ctx.lineTo(-s/2 - shadowLength, s/2 - shadowDepth);
+            ctx.closePath();
+            ctx.fill();
+            
+            // 安全屋图标（蓝色房子）
+            const houseGrad = ctx.createLinearGradient(-s/2, -s/2, s/2, s/2);
+            houseGrad.addColorStop(0, '#1e40af');
+            houseGrad.addColorStop(0.5, '#3b82f6');
+            houseGrad.addColorStop(1, '#60a5fa');
+            ctx.fillStyle = houseGrad;
+            
+            // 房子主体
+            ctx.fillRect(-s/2, -s/4, s, s/2);
+            
+            // 屋顶（三角形）
+            ctx.beginPath();
+            ctx.moveTo(-s/2, -s/4);
+            ctx.lineTo(0, -s/2);
+            ctx.lineTo(s/2, -s/4);
+            ctx.closePath();
+            ctx.fill();
+            
+            // 门（白色）
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-s/6, 0, s/3, s/3);
+            
+            // 边框
+            ctx.strokeStyle = '#1e3a8a';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(-s/2, -s/2, s, s);
+            
+            ctx.restore();
         }
     });
+    
+    // 5.5. Safe House (展开后的安全屋)
+    if (refs.safeHouse.current) {
+        const safeHouse = refs.safeHouse.current;
+        ctx.save();
+        ctx.translate(safeHouse.x + safeHouse.width / 2, safeHouse.y + safeHouse.height / 2);
+        
+        // 安全屋背景（半透明蓝色）
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = '#4169E1';
+        ctx.fillRect(-safeHouse.width / 2, -safeHouse.height / 2, safeHouse.width, safeHouse.height);
+        
+        // 安全屋边框（闪烁效果）
+        ctx.globalAlpha = 0.8 + Math.sin(Date.now() * 0.01) * 0.2;
+        ctx.strokeStyle = '#1e40af';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(-safeHouse.width / 2, -safeHouse.height / 2, safeHouse.width, safeHouse.height);
+        
+        // 安全屋标记
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('安全屋', 0, 0);
+        
+        ctx.restore();
+    }
 
     // 6. Entities (Characters)
     // Sort by Y to handle simple depth
@@ -406,10 +485,17 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
             ctx.shadowBlur = isCannon ? 15 : 5;
           ctx.shadowColor = b.color;
         
-            ctx.fillStyle = '#fff'; // White hot core
+            // 使用子弹颜色作为核心，更明显
+            ctx.fillStyle = b.color;
         ctx.beginPath();
         ctx.arc(0, 0, bulletSize, 0, Math.PI * 2); 
         ctx.fill();
+        
+            // 添加白色高光中心，增强可见性
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(0, 0, bulletSize * 0.5, 0, Math.PI * 2);
+            ctx.fill();
         
             // Trail
           ctx.shadowBlur = 0;
@@ -494,6 +580,17 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, p: PlayerEntity) => {
     ctx.save();
     ctx.rotate(0); 
     
+    // 显示玩家编号 - 位置更靠近玩家
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 3;
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const playerLabel = `P${p.playerId}`;
+    ctx.strokeText(playerLabel, 0, -30);
+    ctx.fillText(playerLabel, 0, -30);
+    
     const hpPercent = (p.hp / p.maxHp) * 100;
     const isLowHealth = hpPercent <= 20;
     const isCriticalHealth = hpPercent <= 10;
@@ -501,9 +598,9 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, p: PlayerEntity) => {
     // 脉冲效果（使用时间实现动画）
     const pulseValue = Math.sin(Date.now() / 200) * 0.5 + 0.5; // 0-1之间波动
     
-    // 血条背景（黑色半透明）
+    // 血条背景（黑色半透明）- 放在文字下方
     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    ctx.fillRect(-16, -36, 32, 5);
+    ctx.fillRect(-16, -20, 32, 5);
     
     // 血条边框 - 低血量时改变颜色和效果
     if (isCriticalHealth) {
@@ -525,7 +622,7 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, p: PlayerEntity) => {
         ctx.lineWidth = 1;
         ctx.shadowBlur = 0;
     }
-    ctx.strokeRect(-16, -36, 32, 5);
+    ctx.strokeRect(-16, -20, 32, 5);
     ctx.shadowBlur = 0; // 重置阴影
     
     // 血条填充 - 根据血量改变颜色
@@ -542,7 +639,7 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, p: PlayerEntity) => {
     
     ctx.fillStyle = hpColor;
     const hpWidth = 30 * (p.hp / p.maxHp);
-    ctx.fillRect(-15, -35, hpWidth, 3);
+    ctx.fillRect(-15, -19, hpWidth, 3);
     
     ctx.restore();
 
