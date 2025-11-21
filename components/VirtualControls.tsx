@@ -8,12 +8,27 @@ interface VirtualControlsProps {
 
 export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon }) => {
   const weaponSwitchRef = useRef<HTMLButtonElement>(null);
+  const joystickRef = useRef<HTMLDivElement>(null);
+  const [joystickActive, setJoystickActive] = useState(false);
+  const [joystickPosition, setJoystickPosition] = useState({ x: 0, y: 0 });
+  const activeKeysRef = useRef<Set<Action>>(new Set());
 
   // Prevent context menu on long press
   useEffect(() => {
     const handleContextMenu = (e: Event) => e.preventDefault();
     document.addEventListener('contextmenu', handleContextMenu);
     return () => document.removeEventListener('contextmenu', handleContextMenu);
+  }, []);
+
+  // Cleanup: release all keys when component unmounts
+  useEffect(() => {
+    return () => {
+      activeKeysRef.current.forEach(action => {
+        const code = getKeyForAction(action);
+        simulateKey(code, 'keyup');
+      });
+      activeKeysRef.current.clear();
+    };
   }, []);
 
   // Add non-passive touch event listener for weapon switch button
@@ -42,6 +57,9 @@ export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon 
           nextAction = Action.WEAPON_BARREL;
           break;
         case WeaponType.BARREL:
+          nextAction = Action.WEAPON_CANNON;
+          break;
+        case WeaponType.CANNON:
           nextAction = Action.WEAPON_PISTOL;
           break;
         default:
@@ -87,6 +105,167 @@ export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon 
     simulateKey(code, 'keyup');
   };
 
+  // Joystick handlers
+  const getJoystickCenter = () => {
+    if (!joystickRef.current) return { x: 0, y: 0 };
+    const rect = joystickRef.current.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+  };
+
+  const updateJoystickPosition = (clientX: number, clientY: number) => {
+    const center = getJoystickCenter();
+    const maxRadius = 60; // 最大拖拽半径
+    
+    let dx = clientX - center.x;
+    let dy = clientY - center.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // 限制在最大半径内
+    if (distance > maxRadius) {
+      dx = (dx / distance) * maxRadius;
+      dy = (dy / distance) * maxRadius;
+    }
+    
+    setJoystickPosition({ x: dx, y: dy });
+    
+    // 计算移动方向并发送按键事件
+    const deadzone = 8; // 死区，避免轻微移动
+    const threshold = maxRadius * 0.25; // 25% 的阈值，用于判断是否在对角线区域
+    
+    // 清除之前的按键
+    activeKeysRef.current.forEach(action => {
+      const code = getKeyForAction(action);
+      simulateKey(code, 'keyup');
+    });
+    activeKeysRef.current.clear();
+    
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    
+    // 如果移动距离超过死区
+    if (distance > deadzone) {
+      // 判断是否在对角线区域（两个方向都超过阈值）
+      const isDiagonal = absX > threshold && absY > threshold;
+      
+      if (isDiagonal) {
+        // 对角线移动：同时按下两个方向键
+        if (dx > 0) {
+          activeKeysRef.current.add(Action.MOVE_RIGHT);
+          simulateKey(getKeyForAction(Action.MOVE_RIGHT), 'keydown');
+        } else {
+          activeKeysRef.current.add(Action.MOVE_LEFT);
+          simulateKey(getKeyForAction(Action.MOVE_LEFT), 'keydown');
+        }
+        
+        if (dy > 0) {
+          activeKeysRef.current.add(Action.MOVE_DOWN);
+          simulateKey(getKeyForAction(Action.MOVE_DOWN), 'keydown');
+        } else {
+          activeKeysRef.current.add(Action.MOVE_UP);
+          simulateKey(getKeyForAction(Action.MOVE_UP), 'keydown');
+        }
+      } else {
+        // 单一方向移动：选择主要方向
+        if (absX > absY) {
+          // 水平方向为主
+          if (dx > deadzone) {
+            activeKeysRef.current.add(Action.MOVE_RIGHT);
+            simulateKey(getKeyForAction(Action.MOVE_RIGHT), 'keydown');
+          } else if (dx < -deadzone) {
+            activeKeysRef.current.add(Action.MOVE_LEFT);
+            simulateKey(getKeyForAction(Action.MOVE_LEFT), 'keydown');
+          }
+        } else {
+          // 垂直方向为主
+          if (dy > deadzone) {
+            activeKeysRef.current.add(Action.MOVE_DOWN);
+            simulateKey(getKeyForAction(Action.MOVE_DOWN), 'keydown');
+          } else if (dy < -deadzone) {
+            activeKeysRef.current.add(Action.MOVE_UP);
+            simulateKey(getKeyForAction(Action.MOVE_UP), 'keydown');
+          }
+        }
+      }
+    }
+  };
+
+  const handleJoystickStart = (e: React.TouchEvent | React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setJoystickActive(true);
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    updateJoystickPosition(clientX, clientY);
+  };
+
+  const handleJoystickMove = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!joystickActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    updateJoystickPosition(clientX, clientY);
+  };
+
+  const handleJoystickEnd = (e: React.TouchEvent | React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setJoystickActive(false);
+    setJoystickPosition({ x: 0, y: 0 });
+    
+    // 释放所有按键
+    activeKeysRef.current.forEach(action => {
+      const code = getKeyForAction(action);
+      simulateKey(code, 'keyup');
+    });
+    activeKeysRef.current.clear();
+  };
+
+  // 全局触摸移动和结束事件处理
+  useEffect(() => {
+    if (!joystickActive) return;
+
+    const handleGlobalMove = (e: TouchEvent | MouseEvent) => {
+      if (!joystickActive) return;
+      e.preventDefault();
+      
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      updateJoystickPosition(clientX, clientY);
+    };
+
+    const handleGlobalEnd = (e: TouchEvent | MouseEvent) => {
+      if (!joystickActive) return;
+      e.preventDefault();
+      setJoystickActive(false);
+      setJoystickPosition({ x: 0, y: 0 });
+      
+      // 释放所有按键
+      activeKeysRef.current.forEach(action => {
+        const code = getKeyForAction(action);
+        simulateKey(code, 'keyup');
+      });
+      activeKeysRef.current.clear();
+    };
+
+    window.addEventListener('touchmove', handleGlobalMove, { passive: false });
+    window.addEventListener('touchend', handleGlobalEnd, { passive: false });
+    window.addEventListener('mousemove', handleGlobalMove);
+    window.addEventListener('mouseup', handleGlobalEnd);
+
+    return () => {
+      window.removeEventListener('touchmove', handleGlobalMove);
+      window.removeEventListener('touchend', handleGlobalEnd);
+      window.removeEventListener('mousemove', handleGlobalMove);
+      window.removeEventListener('mouseup', handleGlobalEnd);
+    };
+  }, [joystickActive]);
+
   const handleWeaponSwitch = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -108,6 +287,9 @@ export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon 
         nextAction = Action.WEAPON_BARREL;
         break;
       case WeaponType.BARREL:
+        nextAction = Action.WEAPON_CANNON;
+        break;
+      case WeaponType.CANNON:
         nextAction = Action.WEAPON_PISTOL;
         break;
       default:
@@ -134,62 +316,30 @@ export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon 
     >
       <div className="flex justify-between items-end w-full pointer-events-auto">
         
-        {/* D-Pad */}
-        <div className="relative w-40 h-40 bg-black/20 rounded-full backdrop-blur-sm border border-white/10">
-            {/* Up */}
-            <button
-              className={`${btnBaseClass} absolute top-2 left-1/2 -translate-x-1/2 w-12 h-12 rounded-t-xl`}
-              onTouchStart={handleTouchStart(Action.MOVE_UP)}
-              onTouchEnd={handleTouchEnd(Action.MOVE_UP)}
-              onMouseDown={handleTouchStart(Action.MOVE_UP)}
-              onMouseUp={handleTouchEnd(Action.MOVE_UP)}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
-              </svg>
-            </button>
-            
-            {/* Down */}
-            <button
-              className={`${btnBaseClass} absolute bottom-2 left-1/2 -translate-x-1/2 w-12 h-12 rounded-b-xl`}
-              onTouchStart={handleTouchStart(Action.MOVE_DOWN)}
-              onTouchEnd={handleTouchEnd(Action.MOVE_DOWN)}
-              onMouseDown={handleTouchStart(Action.MOVE_DOWN)}
-              onMouseUp={handleTouchEnd(Action.MOVE_DOWN)}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-              </svg>
-            </button>
-            
-            {/* Left */}
-            <button
-              className={`${btnBaseClass} absolute left-2 top-1/2 -translate-y-1/2 w-12 h-12 rounded-l-xl`}
-              onTouchStart={handleTouchStart(Action.MOVE_LEFT)}
-              onTouchEnd={handleTouchEnd(Action.MOVE_LEFT)}
-              onMouseDown={handleTouchStart(Action.MOVE_LEFT)}
-              onMouseUp={handleTouchEnd(Action.MOVE_LEFT)}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-              </svg>
-            </button>
-            
-            {/* Right */}
-            <button
-              className={`${btnBaseClass} absolute right-2 top-1/2 -translate-y-1/2 w-12 h-12 rounded-r-xl`}
-              onTouchStart={handleTouchStart(Action.MOVE_RIGHT)}
-              onTouchEnd={handleTouchEnd(Action.MOVE_RIGHT)}
-              onMouseDown={handleTouchStart(Action.MOVE_RIGHT)}
-              onMouseUp={handleTouchEnd(Action.MOVE_RIGHT)}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
-            </button>
-
-            {/* Center Deadzone (Visual only) */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 bg-white/10 rounded-full" />
+        {/* Joystick - Drag-style like mobile games */}
+        <div 
+          ref={joystickRef}
+          className="relative w-40 h-40 bg-black/20 rounded-full backdrop-blur-sm border border-white/10 touch-none"
+          onTouchStart={handleJoystickStart}
+          onTouchMove={handleJoystickMove}
+          onTouchEnd={handleJoystickEnd}
+          onMouseDown={handleJoystickStart}
+          onMouseMove={handleJoystickMove}
+          onMouseUp={handleJoystickEnd}
+        >
+          {/* Joystick Base Circle */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-white/5 rounded-full border border-white/20" />
+          
+          {/* Joystick Handle - moves with drag */}
+          <div 
+            className="absolute top-1/2 left-1/2 w-16 h-16 bg-white/20 rounded-full border-2 border-white/40 shadow-lg transition-transform duration-75"
+            style={{
+              transform: `translate(calc(-50% + ${joystickPosition.x}px), calc(-50% + ${joystickPosition.y}px))`,
+              opacity: joystickActive ? 1 : 0.6
+            }}
+          >
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white/30 rounded-full" />
+          </div>
         </div>
 
         {/* Action Buttons */}

@@ -20,9 +20,9 @@ export const DEVIL_HP = 120; // 红色恶魔僵尸生命值
 export const PLAYER_HP = 100; // 玩家初始生命值
 
 // 病毒(红色僵尸子弹)配置
-export const VIRUS_SPEED = 3.0; // 病毒飞行速度
+export const VIRUS_SPEED = 2.0; // 病毒飞行速度 - 从3.0降低到2.0，飞行速度更慢
 export const VIRUS_DAMAGE = 25; // 病毒伤害值
-export const DEVIL_FIRE_RATE = 2000; // 红色僵尸攻击间隔(毫秒)
+export const DEVIL_FIRE_RATE = 3000; // 红色僵尸攻击间隔(毫秒) - 从2000增加到3000，降低攻击速度
 
 // 道具配置
 export const HEALTH_PACK_VAL = 25; // 医疗包恢复量

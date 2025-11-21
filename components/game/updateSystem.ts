@@ -105,7 +105,7 @@ export const updateGame = (refs: GameRefs, time: number) => {
             if (time - lastSwitchTime > 200) {
                 (player as any).lastWeaponSwitchTime = time;
                 
-                // 根据当前武器切换到下一个（循环顺序：PISTOL -> UZI -> SHOTGUN -> FAKE_WALL -> BARREL -> PISTOL）
+                // 根据当前武器切换到下一个（循环顺序：PISTOL -> UZI -> SHOTGUN -> FAKE_WALL -> BARREL -> CANNON -> PISTOL）
                 switch (player.currentWeapon) {
                     case WeaponType.PISTOL:
                         player.currentWeapon = WeaponType.UZI;
@@ -120,6 +120,9 @@ export const updateGame = (refs: GameRefs, time: number) => {
                         player.currentWeapon = WeaponType.BARREL;
                         break;
                     case WeaponType.BARREL:
+                        player.currentWeapon = WeaponType.CANNON;
+                        break;
+                    case WeaponType.CANNON:
                         player.currentWeapon = WeaponType.PISTOL;
                         break;
                     default:
@@ -149,6 +152,9 @@ export const updateGame = (refs: GameRefs, time: number) => {
                             player.currentWeapon = WeaponType.BARREL;
                             break;
                         case WeaponType.BARREL:
+                            player.currentWeapon = WeaponType.CANNON;
+                            break;
+                        case WeaponType.CANNON:
                             player.currentWeapon = WeaponType.PISTOL;
                             break;
                         default:
@@ -163,7 +169,7 @@ export const updateGame = (refs: GameRefs, time: number) => {
                     (player as any).lastWeaponSwitchTime = time;
                     switch (player.currentWeapon) {
                         case WeaponType.PISTOL:
-                            player.currentWeapon = WeaponType.BARREL;
+                            player.currentWeapon = WeaponType.CANNON;
                             break;
                         case WeaponType.UZI:
                             player.currentWeapon = WeaponType.PISTOL;
@@ -176,6 +182,9 @@ export const updateGame = (refs: GameRefs, time: number) => {
                             break;
                         case WeaponType.BARREL:
                             player.currentWeapon = WeaponType.FAKE_WALL;
+                            break;
+                        case WeaponType.CANNON:
+                            player.currentWeapon = WeaponType.BARREL;
                             break;
                         default:
                             player.currentWeapon = WeaponType.PISTOL;
