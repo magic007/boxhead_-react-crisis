@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import GameCanvas from './components/GameCanvas';
 import UIOverlay from './components/UIOverlay';
 import { KeybindingModal } from './components/KeybindingModal';
+import { VirtualControls } from './components/VirtualControls';
 import { GameState, WeaponType } from './types';
 import { Action, getSavedKeyMap } from './components/game/inputConfig';
 
@@ -11,6 +12,8 @@ export default function App() {
   const [playerCount, setPlayerCount] = useState(1);
   const [score, setScore] = useState(0);
   const [multiplier, setMultiplier] = useState(1);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showVirtualControls, setShowVirtualControls] = useState(true);
   
   // Player 1 Stats
   const [p1Stats, setP1Stats] = useState({
@@ -24,14 +27,52 @@ export default function App() {
   
   const [finalScore, setFinalScore] = useState(0);
 
+  useEffect(() => {
+    // Prevent double alert in strict mode
+    if (window.hasShownMobileAlert) return;
+
+    const checkMobile = () => {
+      const ua = navigator.userAgent;
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+      const isSmallScreen = window.innerWidth <= 1024;
+      const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      return (isMobileDevice || (isSmallScreen && hasTouch));
+    };
+    
+    const mobile = checkMobile();
+    setIsMobile(mobile);
+    if (mobile) {
+      window.hasShownMobileAlert = true;
+      alert('检测到您正在使用移动设备。\n\n系统已为您启用虚拟按键操作：\n- 左侧：移动摇杆\n- 右侧：攻击与切换武器\n- 空白处：触摸瞄准');
+    }
+  }, []);
+
+  const requestFullScreen = useCallback(() => {
+    const elem = document.documentElement;
+    const req = elem.requestFullscreen || 
+                (elem as any).mozRequestFullScreen || 
+                (elem as any).webkitRequestFullScreen || 
+                (elem as any).msRequestFullscreen;
+    
+    if (req) {
+      req.call(elem).catch((err: any) => {
+        console.log('Full screen request denied or failed', err);
+      });
+    }
+  }, []);
+
   const handleStart = useCallback((count: number) => {
+    if (isMobile) {
+      requestFullScreen();
+    }
+
     setPlayerCount(count);
     setScore(0);
     setMultiplier(1);
     setP1Stats({ hp: 100, weapon: WeaponType.PISTOL, ammo: -1 });
     setP2Stats(count === 2 ? { hp: 100, weapon: WeaponType.PISTOL, ammo: -1 } : null);
     setGameState(GameState.PLAYING);
-  }, []);
+  }, [isMobile, requestFullScreen]);
 
   const handleGameOver = useCallback((final: number) => {
     setFinalScore(final);
@@ -87,12 +128,17 @@ export default function App() {
         />
         
         {gameState === GameState.PLAYING && (
-          <UIOverlay 
-            score={score} 
-            multiplier={multiplier} 
-            p1Stats={p1Stats}
-            p2Stats={p2Stats}
-          />
+          <>
+            <UIOverlay 
+              score={score} 
+              multiplier={multiplier} 
+              p1Stats={p1Stats}
+              p2Stats={p2Stats}
+            />
+            {isMobile && playerCount === 1 && showVirtualControls && (
+              <VirtualControls currentWeapon={p1Stats.weapon} />
+            )}
+          </>
         )}
 
         {/* Main Menu */}
@@ -101,6 +147,17 @@ export default function App() {
             <h1 className="text-6xl font-bold mb-2 text-red-600 tracking-tighter">僵尸危机 3</h1>
             <h2 className="text-2xl mb-8 text-gray-300">BOXHEAD: ZOMBIE WARS</h2>
             
+            {isMobile && (
+               <button 
+                 onClick={requestFullScreen}
+                 className="absolute top-4 right-4 p-3 bg-gray-800/50 border border-white/20 rounded-full text-white active:scale-95 transition-all"
+               >
+                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                </svg>
+               </button>
+            )}
+
             <div className="space-y-4 text-center flex flex-col items-center">
               <button 
                 onClick={() => handleStart(1)}
@@ -157,7 +214,13 @@ export default function App() {
         )}
 
         {/* Keybinding Modal */}
-        <KeybindingModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+        <KeybindingModal 
+          isOpen={isSettingsOpen} 
+          onClose={() => setIsSettingsOpen(false)} 
+          showVirtualControls={showVirtualControls}
+          onToggleVirtualControls={() => setShowVirtualControls(prev => !prev)}
+          isMobile={isMobile}
+        />
 
         {/* Game Over Screen */}
         {gameState === GameState.GAME_OVER && (

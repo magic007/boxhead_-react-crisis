@@ -105,3 +105,9 @@ export interface WeaponConfig {
   color: string;
   isDeployable?: boolean; // True for walls/barrels
 }
+
+declare global {
+  interface Window {
+    hasShownMobileAlert?: boolean;
+  }
+}

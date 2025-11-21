@@ -184,11 +184,31 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     };
     const handleMouseUp = () => gameRefs.isMouseDown.current = false;
 
+    const handleTouchMove = (e: TouchEvent) => {
+        if (!canvasRef.current) return;
+        const rect = canvasRef.current.getBoundingClientRect();
+        
+        // Find the first touch that is not on a button (controls)
+        for (let i = 0; i < e.touches.length; i++) {
+            const touch = e.touches[i];
+            const target = touch.target as HTMLElement;
+            if (!target.closest('button')) {
+                 gameRefs.mouse.current = {
+                    x: touch.clientX - rect.left,
+                    y: touch.clientY - rect.top
+                  };
+                  break;
+            }
+        }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchstart', handleTouchMove, { passive: false });
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -196,6 +216,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchstart', handleTouchMove);
     };
   }, []);
 

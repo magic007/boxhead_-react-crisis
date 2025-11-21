@@ -4,9 +4,18 @@ import { Action, KeyMap, getSavedKeyMap, saveKeyMap, DEFAULT_KEYMAP_P1, DEFAULT_
 interface KeybindingModalProps {
   isOpen: boolean;
   onClose: () => void;
+  showVirtualControls: boolean;
+  onToggleVirtualControls: () => void;
+  isMobile: boolean;
 }
 
-export const KeybindingModal: React.FC<KeybindingModalProps> = ({ isOpen, onClose }) => {
+export const KeybindingModal: React.FC<KeybindingModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  showVirtualControls, 
+  onToggleVirtualControls,
+  isMobile 
+}) => {
   const [selectedPlayer, setSelectedPlayer] = useState<number>(1);
   const [keyMap, setKeyMap] = useState<KeyMap>(getSavedKeyMap(1));
   const [listeningAction, setListeningAction] = useState<Action | null>(null);
@@ -74,6 +83,20 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({ isOpen, onClos
                 玩家 2 (P2)
             </button>
         </div>
+
+        {isMobile && (
+          <div className="mb-6 p-3 bg-gray-800 rounded border border-gray-600 flex items-center justify-between">
+            <span className="text-white font-bold">虚拟按键 (Virtual Controls)</span>
+            <button
+              onClick={onToggleVirtualControls}
+              className={`px-4 py-2 rounded font-bold transition-colors ${
+                showVirtualControls ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+              }`}
+            >
+              {showVirtualControls ? '开启 (ON)' : '关闭 (OFF)'}
+            </button>
+          </div>
+        )}
 
         <div className="space-y-3 mb-8">
           {Object.values(Action).map((action) => (
