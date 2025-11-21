@@ -21,7 +21,8 @@ export enum WeaponType {
   SHOTGUN = 'Shotgun',
   FAKE_WALL = 'FakeWall', // 新增：假墙
   BARREL = 'Barrel',      // 新增：油桶
-  GRENADE = 'Grenade'     // 新增：手雷技能
+  GRENADE = 'Grenade',    // 新增：手雷技能
+  CANNON = 'Cannon'       // 新增：大炮
 }
 
 export interface Vector2 {
@@ -77,6 +78,7 @@ export interface Bullet {
   color: string;
   isGrenade?: boolean; // 是否为手雷
   isVirus?: boolean; // 是否为恶魔病毒
+  isCannon?: boolean; // 是否为大炮
   targetPos?: Vector2; // 手雷目标点
   // Physics body
   body?: any;

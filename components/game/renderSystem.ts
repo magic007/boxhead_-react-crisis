@@ -161,16 +161,30 @@ export const renderGame = (ctx: CanvasRenderingContext2D, refs: GameRefs) => {
         ctx.shadowBlur = 0;
       } else {
         // Draw Standard Bullet
+        // 大炮子弹更大（伤害 >= 150）
+        const isCannon = b.damage >= 150;
+        const bulletSize = b.isGrenade ? 4 : (isCannon ? 6 : 2);
+        
         ctx.fillStyle = b.color;
         ctx.strokeStyle = b.color;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = isCannon ? 3 : 2;
+        
+        // 大炮子弹添加发光效果
+        if (isCannon) {
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = b.color;
+        }
         
         ctx.beginPath();
-        ctx.arc(0, 0, b.isGrenade ? 4 : 2, 0, Math.PI * 2); 
+        ctx.arc(0, 0, bulletSize, 0, Math.PI * 2); 
         ctx.fill();
+        
+        if (isCannon) {
+          ctx.shadowBlur = 0;
+        }
 
         if (!b.isGrenade) {
-            const trailLen = 10; 
+            const trailLen = isCannon ? 15 : 10; 
             if (Math.abs(b.velocity.x) > 0.1 || Math.abs(b.velocity.y) > 0.1) {
                 const angle = Math.atan2(b.velocity.y, b.velocity.x);
                 ctx.rotate(angle);
@@ -247,6 +261,7 @@ const drawEntity = (ctx: CanvasRenderingContext2D, e: Entity) => {
       if (cw === WeaponType.SHOTGUN) weaponName = "霰弹枪";
       if (cw === WeaponType.FAKE_WALL) weaponName = "假墙";
       if (cw === WeaponType.BARREL) weaponName = "油桶";
+      if (cw === WeaponType.CANNON) weaponName = "大炮";
       
       const label = `P${p.playerId}: ${weaponName}`;
       ctx.fillText(label, 0, -e.radius - 10);
