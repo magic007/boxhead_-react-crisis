@@ -19,6 +19,8 @@ export interface GameRefs {
   keyMaps: React.MutableRefObject<Record<number, KeyMap>>; // playerId -> KeyMap
   mouse: React.MutableRefObject<{ x: number, y: number }>;
   isMouseDown: React.MutableRefObject<boolean>;
+  gamepads: React.MutableRefObject<Array<Gamepad | null>>; // 连接的手柄列表
+  gamepadButtons: React.MutableRefObject<Array<Set<number>>>; // 每个手柄按下的按钮索引
   score: React.MutableRefObject<number>;
   multiplier: React.MutableRefObject<number>;
   lastKillTime: React.MutableRefObject<number>;

@@ -31,6 +31,18 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
   const [selectedPlayer, setSelectedPlayer] = useState<number>(1);
   const [keyMap, setKeyMap] = useState<KeyMap>(getSavedKeyMap(1));
   const [listeningAction, setListeningAction] = useState<Action | null>(null);
+  const [showGamepadModal, setShowGamepadModal] = useState(false);
+  const [gamepadInfo, setGamepadInfo] = useState<{
+    supported: boolean;
+    connected: number;
+    gamepads: Array<{
+      id: string;
+      index: number;
+      buttons: number;
+      axes: number;
+      mapping: string;
+    }>;
+  } | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -81,6 +93,72 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
       setKeyMap(selectedTab === 1 ? DEFAULT_KEYMAP_P1 : DEFAULT_KEYMAP_P2);
       setListeningAction(null);
     }
+  };
+
+  const detectGamepads = () => {
+    const supported = 'getGamepads' in navigator;
+    let connected = 0;
+    const gamepads: Array<{
+      id: string;
+      index: number;
+      buttons: number;
+      axes: number;
+      mapping: string;
+    }> = [];
+
+    if (supported) {
+      // 尝试获取游戏手柄列表
+      const gamepadList = navigator.getGamepads();
+      if (gamepadList) {
+        for (let i = 0; i < gamepadList.length; i++) {
+          const gamepad = gamepadList[i];
+          if (gamepad) {
+            connected++;
+            gamepads.push({
+              id: gamepad.id || `手柄 ${i + 1}`,
+              index: gamepad.index,
+              buttons: gamepad.buttons.length,
+              axes: gamepad.axes.length,
+              mapping: gamepad.mapping || 'standard'
+            });
+          }
+        }
+      }
+
+      // 如果当前没有检测到手柄，添加事件监听器等待连接
+      if (connected === 0) {
+        const handleGamepadConnected = (e: GamepadEvent) => {
+          const gamepad = e.gamepad;
+          if (gamepad) {
+            setGamepadInfo({
+              supported: true,
+              connected: 1,
+              gamepads: [{
+                id: gamepad.id || '未知手柄',
+                index: gamepad.index,
+                buttons: gamepad.buttons.length,
+                axes: gamepad.axes.length,
+                mapping: gamepad.mapping || 'standard'
+              }]
+            });
+          }
+          window.removeEventListener('gamepadconnected', handleGamepadConnected);
+        };
+
+        window.addEventListener('gamepadconnected', handleGamepadConnected);
+        // 5秒后移除监听器
+        setTimeout(() => {
+          window.removeEventListener('gamepadconnected', handleGamepadConnected);
+        }, 5000);
+      }
+    }
+
+    setGamepadInfo({
+      supported,
+      connected,
+      gamepads
+    });
+    setShowGamepadModal(true);
   };
 
   if (!isOpen) return null;
@@ -203,6 +281,15 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
                   进入全屏
                 </button>
               </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-300 font-medium">手柄检测 (Gamepad)</span>
+                <button
+                  onClick={detectGamepads}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded transition-colors"
+                >
+                  检测手柄
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -255,6 +342,94 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Gamepad Detection Modal */}
+      {showGamepadModal && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[60]" onClick={() => setShowGamepadModal(false)}>
+          <div className="bg-gray-900 border-2 border-gray-700 p-6 rounded-lg w-[500px] max-h-[80vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-2xl font-bold text-white mb-6 text-center uppercase tracking-wider">手柄检测结果</h2>
+            
+            {gamepadInfo && (
+              <div className="space-y-4">
+                <div className="p-4 bg-gray-800 rounded-lg border border-gray-600">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-gray-300 font-medium">API 支持:</span>
+                    <span className={`font-bold ${gamepadInfo.supported ? 'text-green-400' : 'text-red-400'}`}>
+                      {gamepadInfo.supported ? '✓ 支持' : '✗ 不支持'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-gray-300 font-medium">已连接手柄:</span>
+                    <span className="text-white font-bold">{gamepadInfo.connected} 个</span>
+                  </div>
+                </div>
+
+                {!gamepadInfo.supported && (
+                  <div className="p-4 bg-yellow-900/50 border border-yellow-700 rounded-lg">
+                    <p className="text-yellow-200 text-sm">
+                      您的浏览器不支持 Gamepad API。请使用现代浏览器（Chrome、Firefox、Edge 等）并确保已连接手柄。
+                    </p>
+                  </div>
+                )}
+
+                {gamepadInfo.supported && gamepadInfo.connected === 0 && (
+                  <div className="p-4 bg-blue-900/50 border border-blue-700 rounded-lg">
+                    <p className="text-blue-200 text-sm">
+                      未检测到已连接的手柄。请确保：
+                    </p>
+                    <ul className="text-blue-200 text-sm mt-2 list-disc list-inside space-y-1">
+                      <li>手柄已通过 USB 或蓝牙连接到设备</li>
+                      <li>手柄已正确配对（蓝牙手柄）</li>
+                      <li>按下手柄上的任意按钮以激活连接</li>
+                    </ul>
+                  </div>
+                )}
+
+                {gamepadInfo.gamepads.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-lg font-bold text-white">检测到的手柄:</h3>
+                    {gamepadInfo.gamepads.map((gamepad, idx) => (
+                      <div key={idx} className="p-4 bg-gray-800 rounded-lg border border-gray-600">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-400 text-sm">手柄名称:</span>
+                            <span className="text-white font-bold">{gamepad.id}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-400 text-sm">索引:</span>
+                            <span className="text-white font-bold">{gamepad.index}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-400 text-sm">按钮数量:</span>
+                            <span className="text-white font-bold">{gamepad.buttons} 个</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-400 text-sm">摇杆数量:</span>
+                            <span className="text-white font-bold">{gamepad.axes / 2} 个</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-400 text-sm">映射标准:</span>
+                            <span className="text-white font-bold">{gamepad.mapping === 'standard' ? '标准' : '自定义'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end mt-6 pt-4 border-t border-gray-700">
+              <button 
+                onClick={() => setShowGamepadModal(false)}
+                className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded transition-colors"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

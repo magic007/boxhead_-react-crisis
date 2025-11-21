@@ -116,9 +116,40 @@ export default function App() {
       }
     };
     
+    // Gamepad pause support (Start button - button 9, or Menu button - button 8)
+    let lastPauseCheck = 0;
+    const checkGamepadPause = () => {
+      const now = Date.now();
+      if (now - lastPauseCheck < 200) return; // 防抖
+      lastPauseCheck = now;
+      
+      const gamepads = navigator.getGamepads();
+      if (gamepads) {
+        for (let i = 0; i < gamepads.length; i++) {
+          const gamepad = gamepads[i];
+          if (gamepad && (gamepad.buttons[9]?.pressed || gamepad.buttons[8]?.pressed)) {
+            setGameState(prev => {
+              if (prev === GameState.PLAYING) return GameState.PAUSED;
+              if (prev === GameState.PAUSED) return GameState.PLAYING;
+              return prev;
+            });
+            break;
+          }
+        }
+      }
+    };
+    
+    let gamepadCheckInterval: number;
+    if (gameState === GameState.PLAYING || gameState === GameState.PAUSED) {
+      gamepadCheckInterval = window.setInterval(checkGamepadPause, 100);
+    }
+    
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (gamepadCheckInterval) clearInterval(gamepadCheckInterval);
+    };
+  }, [gameState]);
 
   return (
     <div className="relative w-screen h-screen bg-zinc-900 flex items-center justify-center select-none">

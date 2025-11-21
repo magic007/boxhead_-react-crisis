@@ -63,6 +63,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     }),
     mouse: useRef<Vector2>({ x: 0, y: 0 }),
     isMouseDown: useRef(false),
+    gamepads: useRef<Array<Gamepad | null>>([]),
+    gamepadButtons: useRef<Array<Set<number>>>([]),
     score: useRef(0),
     multiplier: useRef(1),
     lastKillTime: useRef(0),
@@ -164,6 +166,26 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       // Cap delta to prevent huge jumps if tab receives focus after a while
       const safeDelta = Math.min(delta, 100);
 
+      // Update gamepad state
+      const gamepadList = navigator.getGamepads();
+      if (gamepadList) {
+        for (let i = 0; i < gamepadList.length; i++) {
+          const gamepad = gamepadList[i];
+          if (gamepad) {
+            gameRefs.gamepads.current[i] = gamepad;
+            // Update button states
+            const buttonSet = gameRefs.gamepadButtons.current[i] || new Set<number>();
+            buttonSet.clear();
+            for (let j = 0; j < gamepad.buttons.length; j++) {
+              if (gamepad.buttons[j].pressed) {
+                buttonSet.add(j);
+              }
+            }
+            gameRefs.gamepadButtons.current[i] = buttonSet;
+          }
+        }
+      }
+
       Matter.Engine.update(engine, safeDelta);
       updateGame(gameRefs, time); // Physics is handled by engine, updateGame handles logic
       renderGame(ctx, gameRefs);
@@ -221,6 +243,40 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     window.addEventListener('touchmove', handleTouchMove, { passive: false });
     window.addEventListener('touchstart', handleTouchMove, { passive: false });
 
+    // Gamepad event handlers
+    const handleGamepadConnected = (e: GamepadEvent) => {
+      const gamepad = e.gamepad;
+      gameRefs.gamepads.current[gamepad.index] = gamepad;
+      gameRefs.gamepadButtons.current[gamepad.index] = new Set<number>();
+      gameRefs.soundSystem.current?.resume(); // Unlock audio
+    };
+
+    const handleGamepadDisconnected = (e: GamepadEvent) => {
+      const gamepad = e.gamepad;
+      gameRefs.gamepads.current[gamepad.index] = null;
+      gameRefs.gamepadButtons.current[gamepad.index] = new Set<number>();
+    };
+
+    window.addEventListener('gamepadconnected', handleGamepadConnected);
+    window.addEventListener('gamepaddisconnected', handleGamepadDisconnected);
+
+    // Initialize gamepads
+    const updateGamepads = () => {
+      const gamepadList = navigator.getGamepads();
+      if (gamepadList) {
+        for (let i = 0; i < gamepadList.length; i++) {
+          const gamepad = gamepadList[i];
+          if (gamepad) {
+            gameRefs.gamepads.current[i] = gamepad;
+            if (!gameRefs.gamepadButtons.current[i]) {
+              gameRefs.gamepadButtons.current[i] = new Set<number>();
+            }
+          }
+        }
+      }
+    };
+    updateGamepads();
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -229,6 +285,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchstart', handleTouchMove);
+      window.removeEventListener('gamepadconnected', handleGamepadConnected);
+      window.removeEventListener('gamepaddisconnected', handleGamepadDisconnected);
     };
   }, []);
 

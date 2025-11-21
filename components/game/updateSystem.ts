@@ -74,21 +74,135 @@ export const updateGame = (refs: GameRefs, time: number) => {
         const map = refs.keyMaps.current[player.playerId]; // Use playerId as key
         if (!map) return;
         
+        // Gamepad support: map gamepad index to player (gamepad 0 -> player 1, gamepad 1 -> player 2)
+        const gamepadIndex = player.playerId - 1;
+        const gamepad = refs.gamepads.current[gamepadIndex];
+        const gamepadButtons = refs.gamepadButtons.current[gamepadIndex] || new Set<number>();
+        const hasGamepad = gamepad !== null && gamepad !== undefined;
+        
         // 0. Weapon Switching
+        // Keyboard input
         if (refs.keys.current.has(map[Action.WEAPON_PISTOL])) player.currentWeapon = WeaponType.PISTOL;
         if (refs.keys.current.has(map[Action.WEAPON_UZI])) player.currentWeapon = WeaponType.UZI;
         if (refs.keys.current.has(map[Action.WEAPON_SHOTGUN])) player.currentWeapon = WeaponType.SHOTGUN;
         if (refs.keys.current.has(map[Action.WEAPON_WALL])) player.currentWeapon = WeaponType.FAKE_WALL;
         if (refs.keys.current.has(map[Action.WEAPON_BARREL])) player.currentWeapon = WeaponType.BARREL;
         if (refs.keys.current.has(map[Action.WEAPON_CANNON])) player.currentWeapon = WeaponType.CANNON;
+        
+        // Gamepad weapon selection (D-pad)
+        if (hasGamepad) {
+            if (gamepadButtons.has(12)) player.currentWeapon = WeaponType.PISTOL; // D-pad Up
+            if (gamepadButtons.has(13)) player.currentWeapon = WeaponType.UZI; // D-pad Down
+            if (gamepadButtons.has(14)) player.currentWeapon = WeaponType.SHOTGUN; // D-pad Left
+            if (gamepadButtons.has(15)) player.currentWeapon = WeaponType.FAKE_WALL; // D-pad Right
+        }
+        
+        // 循环切换武器（与虚拟按键功能相同）
+        // Keyboard
+        if (refs.keys.current.has(map[Action.WEAPON_SWITCH])) {
+            // 防抖：200ms 内只切换一次
+            const lastSwitchTime = (player as any).lastWeaponSwitchTime || 0;
+            if (time - lastSwitchTime > 200) {
+                (player as any).lastWeaponSwitchTime = time;
+                
+                // 根据当前武器切换到下一个（循环顺序：PISTOL -> UZI -> SHOTGUN -> FAKE_WALL -> BARREL -> PISTOL）
+                switch (player.currentWeapon) {
+                    case WeaponType.PISTOL:
+                        player.currentWeapon = WeaponType.UZI;
+                        break;
+                    case WeaponType.UZI:
+                        player.currentWeapon = WeaponType.SHOTGUN;
+                        break;
+                    case WeaponType.SHOTGUN:
+                        player.currentWeapon = WeaponType.FAKE_WALL;
+                        break;
+                    case WeaponType.FAKE_WALL:
+                        player.currentWeapon = WeaponType.BARREL;
+                        break;
+                    case WeaponType.BARREL:
+                        player.currentWeapon = WeaponType.PISTOL;
+                        break;
+                    default:
+                        player.currentWeapon = WeaponType.PISTOL;
+                        break;
+                }
+            }
+        }
+        
+        // Gamepad weapon switch (X button or RB/LB)
+        if (hasGamepad) {
+            const lastSwitchTime = (player as any).lastWeaponSwitchTime || 0;
+            if (gamepadButtons.has(2) || gamepadButtons.has(5)) { // X button or RB
+                if (time - lastSwitchTime > 200) {
+                    (player as any).lastWeaponSwitchTime = time;
+                    switch (player.currentWeapon) {
+                        case WeaponType.PISTOL:
+                            player.currentWeapon = WeaponType.UZI;
+                            break;
+                        case WeaponType.UZI:
+                            player.currentWeapon = WeaponType.SHOTGUN;
+                            break;
+                        case WeaponType.SHOTGUN:
+                            player.currentWeapon = WeaponType.FAKE_WALL;
+                            break;
+                        case WeaponType.FAKE_WALL:
+                            player.currentWeapon = WeaponType.BARREL;
+                            break;
+                        case WeaponType.BARREL:
+                            player.currentWeapon = WeaponType.PISTOL;
+                            break;
+                        default:
+                            player.currentWeapon = WeaponType.PISTOL;
+                            break;
+                    }
+                }
+            }
+            // LB: previous weapon
+            if (gamepadButtons.has(4)) {
+                if (time - lastSwitchTime > 200) {
+                    (player as any).lastWeaponSwitchTime = time;
+                    switch (player.currentWeapon) {
+                        case WeaponType.PISTOL:
+                            player.currentWeapon = WeaponType.BARREL;
+                            break;
+                        case WeaponType.UZI:
+                            player.currentWeapon = WeaponType.PISTOL;
+                            break;
+                        case WeaponType.SHOTGUN:
+                            player.currentWeapon = WeaponType.UZI;
+                            break;
+                        case WeaponType.FAKE_WALL:
+                            player.currentWeapon = WeaponType.SHOTGUN;
+                            break;
+                        case WeaponType.BARREL:
+                            player.currentWeapon = WeaponType.FAKE_WALL;
+                            break;
+                        default:
+                            player.currentWeapon = WeaponType.PISTOL;
+                            break;
+                    }
+                }
+            }
+        }
 
         // 1. Player Movement
         let moveX = 0;
         let moveY = 0;
+        
+        // Keyboard input
         if (refs.keys.current.has(map[Action.MOVE_UP])) moveY -= 1;
         if (refs.keys.current.has(map[Action.MOVE_DOWN])) moveY += 1;
         if (refs.keys.current.has(map[Action.MOVE_LEFT])) moveX -= 1;
         if (refs.keys.current.has(map[Action.MOVE_RIGHT])) moveX += 1;
+        
+        // Gamepad left stick input
+        if (hasGamepad && gamepad.axes.length >= 2) {
+            const deadzone = 0.15; // 死区，避免摇杆轻微偏移
+            const stickX = Math.abs(gamepad.axes[0]) > deadzone ? gamepad.axes[0] : 0;
+            const stickY = Math.abs(gamepad.axes[1]) > deadzone ? gamepad.axes[1] : 0;
+            moveX += stickX;
+            moveY += stickY;
+        }
 
         if (moveX !== 0 || moveY !== 0) {
           const len = Math.sqrt(moveX * moveX + moveY * moveY);
@@ -110,7 +224,21 @@ export const updateGame = (refs: GameRefs, time: number) => {
         
         let targetRotation = player.rotation;
         
-        if (player.playerId === 1) {
+        // Gamepad right stick aiming (takes priority)
+        if (hasGamepad && gamepad.axes.length >= 4) {
+            const deadzone = 0.15;
+            const rightStickX = Math.abs(gamepad.axes[2]) > deadzone ? gamepad.axes[2] : 0;
+            const rightStickY = Math.abs(gamepad.axes[3]) > deadzone ? gamepad.axes[3] : 0;
+            if (rightStickX !== 0 || rightStickY !== 0) {
+                targetRotation = Math.atan2(rightStickY, rightStickX);
+            } else if (player.playerId === 1) {
+                // P1: Mouse Aim (fallback if no right stick input)
+                targetRotation = Math.atan2(worldMouseY - player.pos.y, worldMouseX - player.pos.x);
+            } else if (moveX !== 0 || moveY !== 0) {
+                // P2: Face movement direction by default
+                targetRotation = Math.atan2(moveY, moveX);
+            }
+        } else if (player.playerId === 1) {
             // P1: Mouse Aim
             targetRotation = Math.atan2(worldMouseY - player.pos.y, worldMouseX - player.pos.x);
         } else if (moveX !== 0 || moveY !== 0) {
@@ -145,10 +273,12 @@ export const updateGame = (refs: GameRefs, time: number) => {
 
         // 4. Attack / Interact
         // P1 can use MouseDown OR Key. P2 uses Key.
+        // Gamepad: A button (button 0) or RT (button 7)
         const isP1MouseDown = player.playerId === 1 && refs.isMouseDown.current;
         const isKeyAttack = refs.keys.current.has(map[Action.SHOOT]);
+        const isGamepadAttack = hasGamepad && (gamepadButtons.has(0) || gamepadButtons.has(7)); // A button or RT
         
-        const isAttacking = isP1MouseDown || isKeyAttack;
+        const isAttacking = isP1MouseDown || isKeyAttack || isGamepadAttack;
         const weapon = WEAPONS[player.currentWeapon];
         
         if (isAttacking && time - (player.lastAttackTime || 0) > weapon.fireRate) {

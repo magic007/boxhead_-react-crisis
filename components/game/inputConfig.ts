@@ -10,6 +10,7 @@ export enum Action {
   WEAPON_WALL = 'WEAPON_WALL',
   WEAPON_BARREL = 'WEAPON_BARREL',
   WEAPON_CANNON = 'WEAPON_CANNON',
+  WEAPON_SWITCH = 'WEAPON_SWITCH', // 循环切换武器
   PAUSE = 'PAUSE',
 }
 
@@ -27,6 +28,7 @@ export const DEFAULT_KEYMAP_P1: KeyMap = {
   [Action.WEAPON_WALL]: 'Digit4',
   [Action.WEAPON_BARREL]: 'Digit5',
   [Action.WEAPON_CANNON]: 'Digit6',
+  [Action.WEAPON_SWITCH]: 'KeyQ', // 默认 Q 键循环切换武器
   [Action.PAUSE]: 'Escape',
 };
 
@@ -42,6 +44,7 @@ export const DEFAULT_KEYMAP_P2: KeyMap = {
   [Action.WEAPON_WALL]: 'Numpad4',
   [Action.WEAPON_BARREL]: 'Numpad5',
   [Action.WEAPON_CANNON]: 'Numpad6',
+  [Action.WEAPON_SWITCH]: 'NumpadEnter', // 默认小键盘回车键循环切换武器
   [Action.PAUSE]: 'Escape',
 };
 
@@ -57,6 +60,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   [Action.WEAPON_WALL]: '选择假墙',
   [Action.WEAPON_BARREL]: '选择油桶',
   [Action.WEAPON_CANNON]: '选择大炮',
+  [Action.WEAPON_SWITCH]: '循环切换武器',
   [Action.PAUSE]: '暂停游戏',
 };
 
