@@ -116,19 +116,37 @@ export const WEAPONS: Record<WeaponType, WeaponConfig> = {
 
 // 颜色配置
 export const COLORS = {
-  FLOOR: '#EDE4D4', // 地板颜色
-  WALL: '#555555', // 墙体颜色
-  WALL_TOP: '#777777', // 墙顶颜色
-  BLOOD: '#cc0000', // 血液颜色
-  BLOOD_OLD: '#7a0000', // 旧血迹颜色
-  PLAYER_SKIN: '#ffccaa', // 玩家皮肤颜色
-  PLAYER_SHIRT: '#ffffff', // 玩家衣服颜色
-  PLAYER_HAIR: '#111111', // 玩家头发颜色
-  ZOMBIE_SKIN: '#dddddd', // 僵尸皮肤颜色
-  ZOMBIE_BLOOD: '#339933', // 僵尸血液颜色
-  DEVIL_SKIN: '#aa0000', // 恶魔皮肤颜色
-  OBSTACLE_WALL: '#666666', // 障碍墙颜色
-  OBSTACLE_BARREL: '#cc3300' // 油桶颜色
+  FLOOR: '#e8e8e8', // 地板基础色 - 浅灰色混凝土
+  FLOOR_GRID: '#d4d4d4', // 网格线 - 深一点的灰色
+  
+  // 墙体
+  WALL: '#718096', // 墙体侧面 - 蓝灰色
+  WALL_TOP: '#A0AEC0', // 墙体顶部 - 浅蓝灰色
+  WALL_BORDER: '#4A5568', // 墙体边框
+  
+  // 血液
+  BLOOD: '#e53e3e', // 新鲜血液 - 鲜红
+  BLOOD_OLD: '#742a2a', // 干涸血液 - 暗红
+  
+  // 玩家
+  PLAYER_SKIN: '#f6ad55', // 皮肤 - 暖色调
+  PLAYER_SHIRT: '#ffffff', // 衣服 - 白
+  PLAYER_HAIR: '#1a202c', // 头发 - 黑
+  PLAYER_HAND: '#f6ad55', // 手
+  
+  // 僵尸
+  ZOMBIE_SKIN: '#cbd5e0', // 僵尸皮肤 - 苍白蓝灰
+  ZOMBIE_BLOOD: '#38a169', // 僵尸血 - 绿色
+  ZOMBIE_SHIRT: '#718096', // 僵尸衣服 - 破烂灰
+  
+  // 恶魔
+  DEVIL_SKIN: '#c53030', // 恶魔皮肤 - 深红
+  DEVIL_HORNS: '#f6e05e', // 恶魔角 - 黄色
+  
+  // 障碍物
+  OBSTACLE_WALL: '#718096', // 障碍墙
+  OBSTACLE_BARREL: '#e53e3e', // 油桶 - 红
+  OBSTACLE_BARREL_TOP: '#fc8181' // 油桶顶 - 浅红
 };
 
 // 难度配置

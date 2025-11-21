@@ -33,7 +33,7 @@ export const updateGame = (refs: GameRefs, time: number) => {
             player.pos = spawnPos;
             
             // Show message
-            refs.gameMessage.current = `P${player.playerId} REVIVED! (${player.lives} lives left)`;
+            refs.gameMessage.current = `P${player.playerId} 复活！（剩余生命: ${player.lives}）`;
             refs.gameMessageTimer.current = 120;
             refs.soundSystem.current?.playPickup();
         }
@@ -51,7 +51,7 @@ export const updateGame = (refs: GameRefs, time: number) => {
     const calculatedDifficulty = Math.floor(refs.score.current / 10000);
     if (calculatedDifficulty > refs.difficultyLevel.current) {
         refs.difficultyLevel.current = calculatedDifficulty;
-        refs.gameMessage.current = `WARNING: ENEMY SURGE! (LEVEL ${calculatedDifficulty})`;
+        refs.gameMessage.current = `警告：敌人大量涌现！（等级 ${calculatedDifficulty}）`;
         refs.gameMessageTimer.current = 180; 
         refs.soundSystem.current?.playPickup(); 
     }
