@@ -12,6 +12,7 @@ export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon 
   const [joystickActive, setJoystickActive] = useState(false);
   const [joystickPosition, setJoystickPosition] = useState({ x: 0, y: 0 });
   const activeKeysRef = useRef<Set<Action>>(new Set());
+  const joystickTouchIdRef = useRef<number | null>(null); // 跟踪摇杆的触摸点ID
 
   // Prevent context menu on long press
   useEffect(() => {
@@ -195,11 +196,19 @@ export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon 
   const handleJoystickStart = (e: React.TouchEvent | React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setJoystickActive(true);
     
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    updateJoystickPosition(clientX, clientY);
+    if ('changedTouches' in e && e.changedTouches.length > 0) {
+      // 触摸事件：使用 changedTouches 获取当前触摸点（而不是 touches[0]，避免误用其他按钮的触摸点）
+      const touch = e.changedTouches[0];
+      joystickTouchIdRef.current = touch.identifier;
+      setJoystickActive(true);
+      updateJoystickPosition(touch.clientX, touch.clientY);
+    } else if (!('touches' in e)) {
+      // 鼠标事件
+      joystickTouchIdRef.current = -1; // 使用-1表示鼠标
+      setJoystickActive(true);
+      updateJoystickPosition(e.clientX, e.clientY);
+    }
   };
 
   const handleJoystickMove = (e: React.TouchEvent | React.MouseEvent) => {
@@ -207,23 +216,58 @@ export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon 
     e.preventDefault();
     e.stopPropagation();
     
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    updateJoystickPosition(clientX, clientY);
+    if ('touches' in e && e.touches.length > 0) {
+      // 触摸事件：只处理摇杆的触摸点
+      const touchId = joystickTouchIdRef.current;
+      if (touchId !== null) {
+        const touch = Array.from(e.touches as TouchList).find((t: Touch) => t.identifier === touchId);
+        if (touch) {
+          updateJoystickPosition(touch.clientX, touch.clientY);
+        }
+      }
+    } else {
+      // 鼠标事件
+      updateJoystickPosition(e.clientX, e.clientY);
+    }
   };
 
   const handleJoystickEnd = (e: React.TouchEvent | React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setJoystickActive(false);
-    setJoystickPosition({ x: 0, y: 0 });
     
-    // 释放所有按键
-    activeKeysRef.current.forEach(action => {
-      const code = getKeyForAction(action);
-      simulateKey(code, 'keyup');
-    });
-    activeKeysRef.current.clear();
+    if ('touches' in e) {
+      // 触摸事件：检查是否是摇杆的触摸点结束
+      const touchId = joystickTouchIdRef.current;
+      if (touchId !== null) {
+        // 检查这个触摸点是否还在touches列表中
+        const stillActive = Array.from(e.touches as TouchList).some((t: Touch) => t.identifier === touchId);
+        if (!stillActive) {
+          // 摇杆的触摸点已结束
+          setJoystickActive(false);
+          setJoystickPosition({ x: 0, y: 0 });
+          joystickTouchIdRef.current = null;
+          
+          // 释放所有按键
+          activeKeysRef.current.forEach(action => {
+            const code = getKeyForAction(action);
+            simulateKey(code, 'keyup');
+          });
+          activeKeysRef.current.clear();
+        }
+      }
+    } else {
+      // 鼠标事件
+      setJoystickActive(false);
+      setJoystickPosition({ x: 0, y: 0 });
+      joystickTouchIdRef.current = null;
+      
+      // 释放所有按键
+      activeKeysRef.current.forEach(action => {
+        const code = getKeyForAction(action);
+        simulateKey(code, 'keyup');
+      });
+      activeKeysRef.current.clear();
+    }
   };
 
   // 全局触摸移动和结束事件处理
@@ -232,35 +276,74 @@ export const VirtualControls: React.FC<VirtualControlsProps> = ({ currentWeapon 
 
     const handleGlobalMove = (e: TouchEvent | MouseEvent) => {
       if (!joystickActive) return;
-      e.preventDefault();
       
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-      updateJoystickPosition(clientX, clientY);
+      if ('touches' in e) {
+        // 触摸事件：只处理摇杆的触摸点
+        const touchId = joystickTouchIdRef.current;
+        if (touchId !== null) {
+          const touch = Array.from(e.touches as TouchList).find((t: Touch) => t.identifier === touchId);
+          if (touch) {
+            e.preventDefault();
+            updateJoystickPosition(touch.clientX, touch.clientY);
+          }
+        }
+      } else {
+        // 鼠标事件
+        e.preventDefault();
+        updateJoystickPosition(e.clientX, e.clientY);
+      }
     };
 
     const handleGlobalEnd = (e: TouchEvent | MouseEvent) => {
       if (!joystickActive) return;
-      e.preventDefault();
-      setJoystickActive(false);
-      setJoystickPosition({ x: 0, y: 0 });
       
-      // 释放所有按键
-      activeKeysRef.current.forEach(action => {
-        const code = getKeyForAction(action);
-        simulateKey(code, 'keyup');
-      });
-      activeKeysRef.current.clear();
+      if ('touches' in e) {
+        // 触摸事件：检查是否是摇杆的触摸点结束
+        const touchId = joystickTouchIdRef.current;
+        if (touchId !== null) {
+          // 检查这个触摸点是否还在touches列表中
+          const stillActive = Array.from(e.touches as TouchList).some((t: Touch) => t.identifier === touchId);
+          if (!stillActive) {
+            // 摇杆的触摸点已结束
+            e.preventDefault();
+            setJoystickActive(false);
+            setJoystickPosition({ x: 0, y: 0 });
+            joystickTouchIdRef.current = null;
+            
+            // 释放所有按键
+            activeKeysRef.current.forEach(action => {
+              const code = getKeyForAction(action);
+              simulateKey(code, 'keyup');
+            });
+            activeKeysRef.current.clear();
+          }
+        }
+      } else {
+        // 鼠标事件
+        e.preventDefault();
+        setJoystickActive(false);
+        setJoystickPosition({ x: 0, y: 0 });
+        joystickTouchIdRef.current = null;
+        
+        // 释放所有按键
+        activeKeysRef.current.forEach(action => {
+          const code = getKeyForAction(action);
+          simulateKey(code, 'keyup');
+        });
+        activeKeysRef.current.clear();
+      }
     };
 
     window.addEventListener('touchmove', handleGlobalMove, { passive: false });
     window.addEventListener('touchend', handleGlobalEnd, { passive: false });
+    window.addEventListener('touchcancel', handleGlobalEnd, { passive: false });
     window.addEventListener('mousemove', handleGlobalMove);
     window.addEventListener('mouseup', handleGlobalEnd);
 
     return () => {
       window.removeEventListener('touchmove', handleGlobalMove);
       window.removeEventListener('touchend', handleGlobalEnd);
+      window.removeEventListener('touchcancel', handleGlobalEnd);
       window.removeEventListener('mousemove', handleGlobalMove);
       window.removeEventListener('mouseup', handleGlobalEnd);
     };
