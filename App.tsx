@@ -4,7 +4,7 @@ import UIOverlay from './components/UIOverlay';
 import { KeybindingModal } from './components/KeybindingModal';
 import { VirtualControls } from './components/VirtualControls';
 import { GameState, WeaponType, Difficulty } from './types';
-import { Action, getSavedKeyMap } from './components/game/inputConfig';
+import { Action, getSavedKeyMap, getSavedGlobalKeyMap } from './components/game/inputConfig';
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
@@ -116,8 +116,9 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const keyMap = getSavedKeyMap();
-      if (e.code === keyMap[Action.PAUSE]) {
+      // 使用全局按键映射检测暂停
+      const globalKeyMap = getSavedGlobalKeyMap();
+      if (e.code === globalKeyMap[Action.PAUSE]) {
         setGameState(prev => {
           if (prev === GameState.PLAYING) return GameState.PAUSED;
           if (prev === GameState.PAUSED) return GameState.PLAYING;
@@ -355,9 +356,10 @@ export default function App() {
         {/* Pause Menu */}
         {gameState === GameState.PAUSED && (
           <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white z-20 backdrop-blur-sm">
-            <h1 className="text-5xl font-black mb-8 text-yellow-500 tracking-widest drop-shadow-lg border-b-4 border-yellow-500 pb-3 uppercase">
-              Paused
-            </h1>
+            <div className="mb-8 text-center">
+              <h1 className="text-5xl font-black text-yellow-500 mb-1.5 drop-shadow-[0_4px_0_#000]">游戏暂停</h1>
+              <div className="text-lg font-bold text-yellow-400/80 tracking-[0.3em]">PAUSED</div>
+            </div>
             
             <div className="flex flex-col gap-4 w-80">
               <button 
@@ -368,7 +370,7 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                RESUME MISSION
+                继续游戏
               </button>
               <button 
                 onClick={() => setIsSettingsOpen(true)}
@@ -378,7 +380,7 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                SETTINGS
+                设置
               </button>
               <button 
                 onClick={() => setGameState(GameState.MENU)}
@@ -387,7 +389,7 @@ export default function App() {
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                 </svg>
-                ABORT MISSION
+                退出游戏
               </button>
             </div>
           </div>

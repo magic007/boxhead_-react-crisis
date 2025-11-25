@@ -383,10 +383,9 @@ const triggerEnemyDeath = (refs: GameRefs, enemy: Entity) => {
     if (enemy.type === EntityType.DEVIL) {
         spawnItem(refs, enemy.pos, EntityType.ITEM_HEALTH);
         
-        // 随机掉落安全屋道具（每波只掉落一个）
-        if (!refs.safeHouseDropped.current && Math.random() < 0.3) {
+        // 随机掉落安全屋道具（低概率，持续系统）
+        if (Math.random() < 0.15) { // 15%概率掉落安全屋
             spawnItem(refs, enemy.pos, EntityType.ITEM_SAFE_HOUSE);
-            refs.safeHouseDropped.current = true;
         }
     }
 

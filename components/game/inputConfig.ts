@@ -16,6 +16,15 @@ export enum Action {
 
 export type KeyMap = Record<Action, string>;
 
+// 通用按键映射（暂停等全局功能）
+export type GlobalKeyMap = {
+  [Action.PAUSE]: string;
+};
+
+export const DEFAULT_GLOBAL_KEYMAP: GlobalKeyMap = {
+  [Action.PAUSE]: 'Escape',
+};
+
 export const DEFAULT_KEYMAP_P1: KeyMap = {
   [Action.MOVE_UP]: 'KeyW',
   [Action.MOVE_DOWN]: 'KeyS',
@@ -29,7 +38,7 @@ export const DEFAULT_KEYMAP_P1: KeyMap = {
   [Action.WEAPON_BARREL]: 'Digit5',
   [Action.WEAPON_CANNON]: 'Digit6',
   [Action.WEAPON_SWITCH]: 'KeyQ', // 默认 Q 键循环切换武器
-  [Action.PAUSE]: 'Escape',
+  [Action.PAUSE]: 'Escape', // 保留以兼容旧代码，实际使用全局映射
 };
 
 export const DEFAULT_KEYMAP_P2: KeyMap = {
@@ -45,7 +54,7 @@ export const DEFAULT_KEYMAP_P2: KeyMap = {
   [Action.WEAPON_BARREL]: 'Numpad5',
   [Action.WEAPON_CANNON]: 'Numpad6',
   [Action.WEAPON_SWITCH]: 'NumpadEnter', // 默认小键盘回车键循环切换武器
-  [Action.PAUSE]: 'Escape',
+  [Action.PAUSE]: 'Escape', // 保留以兼容旧代码，实际使用全局映射
 };
 
 export const DEFAULT_KEYMAP_P3: KeyMap = {
@@ -61,7 +70,7 @@ export const DEFAULT_KEYMAP_P3: KeyMap = {
   [Action.WEAPON_BARREL]: 'KeyP',
   [Action.WEAPON_CANNON]: 'KeyBracketLeft',
   [Action.WEAPON_SWITCH]: 'KeyE', // 默认 E 键循环切换武器
-  [Action.PAUSE]: 'Escape',
+  [Action.PAUSE]: 'Escape', // 保留以兼容旧代码，实际使用全局映射
 };
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -142,4 +151,30 @@ export const subscribeToGamepadMappingChange = (listener: GamepadMappingListener
 export const saveGamepadMapping = (mapping: Record<number, number>) => {
   localStorage.setItem('boxhead_gamepad_mapping', JSON.stringify(mapping));
   gamepadMappingListeners.forEach(l => l(mapping));
+};
+
+// 全局按键映射（暂停等通用功能）
+export const getSavedGlobalKeyMap = (): GlobalKeyMap => {
+  try {
+    const saved = localStorage.getItem('boxhead_global_keymap');
+    if (saved) {
+      return { ...DEFAULT_GLOBAL_KEYMAP, ...JSON.parse(saved) };
+    }
+  } catch (e) {
+    console.error('Failed to load global keymap', e);
+  }
+  return DEFAULT_GLOBAL_KEYMAP;
+};
+
+type GlobalKeyMapListener = (keyMap: GlobalKeyMap) => void;
+const globalKeyMapListeners: Set<GlobalKeyMapListener> = new Set();
+
+export const subscribeToGlobalKeyMapChange = (listener: GlobalKeyMapListener) => {
+  globalKeyMapListeners.add(listener);
+  return () => { globalKeyMapListeners.delete(listener); };
+};
+
+export const saveGlobalKeyMap = (keyMap: GlobalKeyMap) => {
+  localStorage.setItem('boxhead_global_keymap', JSON.stringify(keyMap));
+  globalKeyMapListeners.forEach(l => l(keyMap));
 };

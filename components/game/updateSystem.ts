@@ -7,6 +7,7 @@ import { WeaponType, EntityType, Entity, Bullet, PlayerEntity } from '../../type
 import { dist, spawnParticles } from './utils';
 import { createExplosion } from './physicsSystem';
 import { Action } from './inputConfig';
+import { updateObstacleGrid, findPath, getNextMovePosition, hasLineOfSight } from './pathfinding';
 
 export const updateGame = (refs: GameRefs, time: number) => {
     const players = refs.players.current;
@@ -337,101 +338,51 @@ export const updateGame = (refs: GameRefs, time: number) => {
         refs.camera.current.y = Math.max(0, Math.min(WORLD_HEIGHT - canvasHeight, refs.camera.current.y));
     }
     
-    // 5. Enemy Spawning - Wave System
-    const userDifficulty = refs.difficulty.current; // 用户选择的难度设置
+    // 5. Enemy Spawning - Continuous Spawn System (持续生成系统)
+    const userDifficulty = refs.difficulty.current;
     const difficultyConfig = DIFFICULTY_CONFIG[userDifficulty];
     const playerCount = Math.max(1, activePlayers.length);
     
-    // 检查当前波次是否完成（所有怪物都被消灭）
+    // 统计当前存活的敌人数量
     const aliveEnemies = refs.enemies.current.filter(e => !e.isDead && !e.dying);
     const currentEnemyCount = aliveEnemies.length;
     
-    // 处理倒计时
-    if (refs.waveCountdown.current > 0) {
-        refs.waveCountdown.current--;
-        const secondsLeft = Math.ceil(refs.waveCountdown.current / 60);
-        if (secondsLeft > 0) {
-            refs.gameMessage.current = `下一波将在 ${secondsLeft} 秒后开始...`;
-            refs.gameMessageTimer.current = 60; // 持续显示
-        }
-        
-        // 倒计时结束，开始新的一波
-        if (refs.waveCountdown.current === 0) {
-            refs.wave.current++;
-            refs.isSpawningWave.current = true;
-            
-            // 销毁安全屋并重置掉落标志
-            refs.safeHouse.current = null;
-            refs.safeHouseDropped.current = false; // 重置，新一波可以掉落安全屋道具
-            
-            // 计算当前波的怪物数量：基础数量 + 波次增长 + 玩家数量加成 + 难度加成
-            const baseWaveEnemies = 20 + (refs.wave.current * 10); // 第1波30只，第2波40只，第3波50只...
-            const playerMultiplier = 1 + (playerCount - 1) * 0.5; // 多玩家增加50%每玩家
-            const difficultyMultiplier = difficultyConfig.maxEnemiesMultiplier;
-            const waveEnemiesTotal = Math.floor(baseWaveEnemies * playerMultiplier * difficultyMultiplier);
-            
-            refs.waveEnemiesTotal.current = waveEnemiesTotal;
-            refs.waveEnemiesRemaining.current = waveEnemiesTotal;
-            
-            // 显示波次消息
-            refs.gameMessage.current = `第 ${refs.wave.current} 波开始！`;
-            refs.gameMessageTimer.current = 120; // 2秒（60fps）
-        }
-    }
-    // 如果还没有开始第一波，直接开始
-    else if (refs.waveEnemiesTotal.current === 0 && refs.waveEnemiesRemaining.current === 0) {
-        refs.wave.current = 1;
-        refs.isSpawningWave.current = true;
-        
-        // 重置安全屋状态
-        refs.safeHouse.current = null;
-        refs.safeHouseDropped.current = false;
-        
-        // 计算当前波的怪物数量
-        const baseWaveEnemies = 20 + (refs.wave.current * 10); // 第1波30只，第2波40只，第3波50只...
-        const playerMultiplier = 1 + (playerCount - 1) * 0.5;
-        const difficultyMultiplier = difficultyConfig.maxEnemiesMultiplier;
-        const waveEnemiesTotal = Math.floor(baseWaveEnemies * playerMultiplier * difficultyMultiplier);
-        
-        refs.waveEnemiesTotal.current = waveEnemiesTotal;
-        refs.waveEnemiesRemaining.current = waveEnemiesTotal;
-        
-        // 显示波次消息
-        refs.gameMessage.current = `第 ${refs.wave.current} 波开始！`;
-        refs.gameMessageTimer.current = 120;
-    }
-    // 如果波次完成（剩余怪物数为0且不在生成中且没有倒计时），启动5秒倒计时
-    else if (!refs.isSpawningWave.current && refs.waveEnemiesRemaining.current === 0 && currentEnemyCount === 0 && refs.waveCountdown.current === 0) {
-        refs.waveCountdown.current = 300; // 5秒倒计时（60fps * 5）
-        refs.gameMessage.current = `第 ${refs.wave.current} 波完成！下一波将在 5 秒后开始...`;
-        refs.gameMessageTimer.current = 60;
-    }
+    // 持续生成系统：不分波次，僵尸源源不断地出现
+    // 动态计算最大同时存在的敌人数量（基于难度和玩家数量）
+    const baseConcurrentEnemies = 15; // 基础同时存在数量
+    const difficultyBonus = refs.difficultyLevel.current * 3; // 每个难度等级增加3个
+    const playerBonus = (playerCount - 1) * 5; // 每个额外玩家增加5个
+    const difficultyMultiplier = difficultyConfig.maxEnemiesMultiplier;
+    const maxConcurrentEnemies = Math.floor((baseConcurrentEnemies + difficultyBonus + playerBonus) * difficultyMultiplier);
     
-    // 如果正在生成波次且没有倒计时，持续生成怪物
-    if (refs.isSpawningWave.current && refs.waveEnemiesRemaining.current > 0 && refs.waveCountdown.current === 0) {
-        // 每帧有一定概率生成怪物，但限制同时存在的怪物数量
-        const maxConcurrentEnemies = Math.min(30, Math.floor(refs.waveEnemiesTotal.current * 0.6)); // 最多同时存在60%的怪物
+    // 如果当前敌人数量少于最大值，持续生成
+    if (currentEnemyCount < maxConcurrentEnemies) {
+        // 计算生成速率：敌人越少，生成越快
+        const enemyRatio = currentEnemyCount / maxConcurrentEnemies; // 0到1之间
+        const baseSpawnRate = 0.02; // 基础生成率（每帧2%概率）
+        const boostSpawnRate = 0.08 * (1 - enemyRatio); // 敌人少时增加生成率
+        const spawnRate = (baseSpawnRate + boostSpawnRate) * difficultyConfig.spawnRateMultiplier;
         
-        if (currentEnemyCount < maxConcurrentEnemies) {
-            // 生成率：根据剩余怪物数调整，剩余越多生成越快
-            const spawnRate = Math.min(0.15, 0.05 + (refs.waveEnemiesRemaining.current / refs.waveEnemiesTotal.current) * 0.1);
-            
-            if (Math.random() < spawnRate) {
-                const target = activePlayers[Math.floor(Math.random() * activePlayers.length)];
-                if (target) {
-                    spawnEnemy(refs, target);
-                    refs.waveEnemiesRemaining.current--;
-                }
+        // 随机生成敌人
+        if (Math.random() < spawnRate) {
+            const target = activePlayers[Math.floor(Math.random() * activePlayers.length)];
+            if (target) {
+                spawnEnemy(refs, target);
             }
         }
-        
-        // 如果所有怪物都已生成，标记生成完成
-        if (refs.waveEnemiesRemaining.current === 0) {
-            refs.isSpawningWave.current = false;
-        }
+    }
+    
+    // 安全屋掉落机制（每杀死一定数量的恶魔后有机会掉落）
+    // 这里用一个简单的标志来控制，避免频繁掉落
+    if (!refs.safeHouseDropped.current && refs.score.current > 5000 && Math.random() < 0.001) {
+        // 这个逻辑会在击杀恶魔时触发，这里只是设置可以掉落的标志
+        refs.safeHouseDropped.current = false; // 实际掉落在physicsSystem中处理
     }
 
     // 6. Enemy AI & State
+    // Update obstacle grid periodically for pathfinding
+    const obstacleGrid = updateObstacleGrid(refs.engine, refs.frame.current);
+    
     refs.enemies.current.forEach(enemy => {
       if(!enemy.body) return;
       enemy.pos.x = enemy.body.position.x;
@@ -475,7 +426,95 @@ export const updateGame = (refs: GameRefs, time: number) => {
 
       if (!nearestPlayer) return; // No target
 
-      const angle = Math.atan2(nearestPlayer.pos.y - enemy.pos.y, nearestPlayer.pos.x - enemy.pos.x);
+      // --- Optimized Pathfinding Logic: Direct first, pathfind only when blocked ---
+      const PATH_UPDATE_INTERVAL = 45; // Recalculate path every 45 frames (~0.75 second)
+      const PATH_RECALC_DISTANCE = 80; // Recalculate if target moves more than this distance
+      const STUCK_THRESHOLD = 3; // If enemy moves less than this distance in 30 frames, consider it stuck
+      const LOS_CHECK_INTERVAL = 15; // Check line of sight every 15 frames (more frequent than path recalc)
+      
+      // Initialize pathfinding properties
+      if (enemy.pathUpdateTimer === undefined) {
+          enemy.pathUpdateTimer = 0;
+          enemy.path = null;
+          enemy.targetPosition = { x: nearestPlayer.pos.x, y: nearestPlayer.pos.y };
+          (enemy as any).lastPathPos = { x: enemy.pos.x, y: enemy.pos.y };
+          (enemy as any).stuckCheckTimer = 30;
+          (enemy as any).losCheckTimer = 0;
+          (enemy as any).needsPathfinding = false; // Flag to indicate if pathfinding is needed
+      }
+      
+      // Check if enemy is stuck (not moving despite trying to move)
+      (enemy as any).stuckCheckTimer = ((enemy as any).stuckCheckTimer || 30) - 1;
+      let isStuck = false;
+      if ((enemy as any).stuckCheckTimer <= 0) {
+          const lastPos = (enemy as any).lastPathPos || enemy.pos;
+          const distMoved = dist(enemy.pos, lastPos);
+          if (distMoved < STUCK_THRESHOLD) {
+              isStuck = true;
+              (enemy as any).needsPathfinding = true; // Force pathfinding when stuck
+          }
+          (enemy as any).lastPathPos = { x: enemy.pos.x, y: enemy.pos.y };
+          (enemy as any).stuckCheckTimer = 30;
+      }
+      
+      // Periodically check line of sight to see if we can switch to direct movement
+      (enemy as any).losCheckTimer = ((enemy as any).losCheckTimer || 0) - 1;
+      if ((enemy as any).losCheckTimer <= 0) {
+          (enemy as any).losCheckTimer = LOS_CHECK_INTERVAL;
+          
+          // Check if there's a clear line of sight to the player
+          const hasLOS = hasLineOfSight(enemy.pos, nearestPlayer.pos, obstacleGrid, 500);
+          
+          if (hasLOS) {
+              // Clear path! Can move directly towards player
+              (enemy as any).needsPathfinding = false;
+              enemy.path = null; // Clear any existing path
+          } else {
+              // No clear line of sight, need pathfinding
+              (enemy as any).needsPathfinding = true;
+          }
+      }
+      
+      // Only use A* pathfinding if needed
+      let nextPos = nearestPlayer.pos; // Default: move directly towards player
+      
+      if ((enemy as any).needsPathfinding) {
+          // Check if we need to recalculate path
+          const targetMoved = enemy.targetPosition && dist(enemy.targetPosition, nearestPlayer.pos) > PATH_RECALC_DISTANCE;
+          const timerExpired = enemy.pathUpdateTimer <= 0;
+          const noPath = !enemy.path || enemy.path.length === 0;
+          
+          const needsRecalc = timerExpired || !enemy.targetPosition || targetMoved || noPath || isStuck;
+          
+          if (needsRecalc) {
+              enemy.pathUpdateTimer = PATH_UPDATE_INTERVAL;
+              enemy.targetPosition = { x: nearestPlayer.pos.x, y: nearestPlayer.pos.y };
+              
+              // Try to find path with A* algorithm
+              enemy.path = findPath(enemy.pos, nearestPlayer.pos, obstacleGrid, 800);
+              
+              // If no path found, try again sooner
+              if (!enemy.path || enemy.path.length === 0) {
+                  enemy.pathUpdateTimer = 15; // Retry in 15 frames if no path found
+              }
+          } else {
+              enemy.pathUpdateTimer--;
+          }
+          
+          // Get next move position from path
+          nextPos = getNextMovePosition(enemy.pos, nearestPlayer.pos, enemy.path);
+          
+          // If we reached the current waypoint, remove it from path
+          if (enemy.path && enemy.path.length > 0) {
+              const distToWaypoint = dist(enemy.pos, enemy.path[0]);
+              if (distToWaypoint < 20) { // Reached waypoint threshold
+                  enemy.path.shift(); // Remove first waypoint
+              }
+          }
+      }
+      
+      // Calculate angle to next position
+      const angle = Math.atan2(nextPos.y - enemy.pos.y, nextPos.x - enemy.pos.x);
       enemy.rotation = angle;
 
       // Devil Virus Attack
@@ -666,9 +705,10 @@ const spawnVirus = (refs: GameRefs, devil: Entity, target: Entity) => {
 
 const spawnEnemy = (refs: GameRefs, player: Entity) => {
     const baseChance = 0.1;
-    const waveChance = refs.wave.current * 0.05;
+    // 基于难度等级（分数）而不是波次来增加恶魔概率
+    const difficultyBonus = refs.difficultyLevel.current * 0.04; // 每个难度等级增加4%
     const difficultyConfig = DIFFICULTY_CONFIG[refs.difficulty.current];
-    const baseDevilChance = Math.min(0.4, baseChance + waveChance);
+    const baseDevilChance = Math.min(0.5, baseChance + difficultyBonus); // 最高50%恶魔概率
     const devilChance = baseDevilChance * difficultyConfig.devilChanceMultiplier;
     
     const isDevil = Math.random() < devilChance;

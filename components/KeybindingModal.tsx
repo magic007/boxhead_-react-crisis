@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Action, KeyMap, getSavedKeyMap, saveKeyMap, DEFAULT_KEYMAP_P1, DEFAULT_KEYMAP_P2, DEFAULT_KEYMAP_P3, ACTION_LABELS, getSavedGamepadMapping, saveGamepadMapping } from './game/inputConfig';
+import { Action, KeyMap, getSavedKeyMap, saveKeyMap, DEFAULT_KEYMAP_P1, DEFAULT_KEYMAP_P2, DEFAULT_KEYMAP_P3, ACTION_LABELS, getSavedGamepadMapping, saveGamepadMapping, GlobalKeyMap, getSavedGlobalKeyMap, saveGlobalKeyMap, DEFAULT_GLOBAL_KEYMAP } from './game/inputConfig';
 import { Difficulty } from '../types';
 
 interface KeybindingModalProps {
@@ -30,6 +30,7 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
   const [selectedTab, setSelectedTab] = useState<'general' | 1 | 2 | 3>('general');
   const [selectedPlayer, setSelectedPlayer] = useState<number>(1);
   const [keyMap, setKeyMap] = useState<KeyMap>(getSavedKeyMap(1));
+  const [globalKeyMap, setGlobalKeyMap] = useState<GlobalKeyMap>(getSavedGlobalKeyMap());
   const [listeningAction, setListeningAction] = useState<Action | null>(null);
   const [showGamepadModal, setShowGamepadModal] = useState(false);
   const [gamepadInfo, setGamepadInfo] = useState<{
@@ -88,6 +89,7 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
         setListeningAction(null);
         // 更新手柄映射和检测已连接的手柄
         setGamepadMapping(getSavedGamepadMapping());
+        setGlobalKeyMap(getSavedGlobalKeyMap());
         updateGamepadList();
       } else {
         setSelectedPlayer(selectedTab);
@@ -104,16 +106,25 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
       e.preventDefault();
       e.stopPropagation();
 
-      setKeyMap(prev => ({
-        ...prev,
-        [listeningAction]: e.code
-      }));
+      if (selectedTab === 'general' && listeningAction === Action.PAUSE) {
+        // 全局按键映射
+        setGlobalKeyMap(prev => ({
+          ...prev,
+          [listeningAction]: e.code
+        }));
+      } else {
+        // 玩家按键映射
+        setKeyMap(prev => ({
+          ...prev,
+          [listeningAction]: e.code
+        }));
+      }
       setListeningAction(null);
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [listeningAction]);
+  }, [listeningAction, selectedTab]);
 
   const formatKey = (code: string) => {
     if (code.startsWith('Key')) return code.slice(3);
@@ -126,8 +137,9 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
     if (selectedTab !== 'general') {
       saveKeyMap(selectedTab, keyMap);
     } else {
-      // 保存手柄映射
+      // 保存手柄映射和全局按键映射
       saveGamepadMapping(gamepadMapping);
+      saveGlobalKeyMap(globalKeyMap);
     }
     onClose();
   };
@@ -161,6 +173,10 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
       } else {
         setKeyMap(DEFAULT_KEYMAP_P3);
       }
+      setListeningAction(null);
+    } else {
+      // 重置全局按键映射
+      setGlobalKeyMap(DEFAULT_GLOBAL_KEYMAP);
       setListeningAction(null);
     }
   };
@@ -286,6 +302,25 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
         {selectedTab === 'general' && (
           <div className="mb-8 p-4 bg-gray-800 rounded-lg border border-gray-600">
             <div className="space-y-4">
+              {/* 暂停按键设置 */}
+              <div className="pb-4 border-b border-gray-600">
+                <div className="text-gray-300 font-medium mb-3">通用按键 (Global Controls)</div>
+                <div className="flex items-center justify-between bg-gray-700 p-3 rounded hover:bg-gray-650 transition-colors">
+                  <span className="text-gray-300 font-medium">{ACTION_LABELS[Action.PAUSE]}</span>
+                  <button 
+                    onClick={() => setListeningAction(Action.PAUSE)}
+                    className={`
+                      px-4 py-2 rounded font-mono font-bold min-w-[120px] text-center border-2 transition-all
+                      ${listeningAction === Action.PAUSE 
+                        ? 'bg-yellow-500 text-black border-yellow-600 animate-pulse scale-105' 
+                        : 'bg-gray-600 text-white border-gray-500 hover:border-gray-400 hover:bg-gray-500'}
+                    `}
+                  >
+                    {listeningAction === Action.PAUSE ? '请按键...' : formatKey(globalKeyMap[Action.PAUSE] || '')}
+                  </button>
+                </div>
+              </div>
+              
               <div className="flex items-center justify-between">
                 <span className="text-gray-300 font-medium">游戏难度 (Difficulty)</span>
                 <div className="flex items-center gap-2">
@@ -430,15 +465,12 @@ export const KeybindingModal: React.FC<KeybindingModalProps> = ({
         )}
 
         <div className="flex justify-between pt-4 border-t border-gray-700">
-          {selectedTab !== 'general' && (
-            <button 
-              onClick={handleReset}
-              className="px-4 py-2 text-red-400 hover:text-red-300 font-medium text-sm"
-            >
-              恢复默认
-            </button>
-          )}
-          {selectedTab === 'general' && <div />}
+          <button 
+            onClick={handleReset}
+            className="px-4 py-2 text-red-400 hover:text-red-300 font-medium text-sm"
+          >
+            {selectedTab === 'general' ? '恢复默认按键' : '恢复默认'}
+          </button>
           <div className="flex gap-3">
             <button 
               onClick={onClose}

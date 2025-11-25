@@ -66,6 +66,10 @@ export interface Entity {
   isExplosive?: boolean; // 是否易爆（油桶）
   // For items
   spawnTime?: number; // 道具生成时间（用于超时销毁）
+  // For pathfinding (enemies)
+  path?: Vector2[] | null; // Cached path for navigation
+  pathUpdateTimer?: number; // Timer to recalculate path periodically
+  targetPosition?: Vector2; // Current target position for pathfinding
   // Physics body from Matter.js (typed as any to avoid strict lib dependency issues in types file)
   body?: any;
 }
